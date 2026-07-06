@@ -978,7 +978,7 @@ PRODUCTS = {
 
     # ---- QPF ---------------------------------------------------------------
     'qpf_1h_pmmn_series': dict(
-        cat='QPF', name='1-h QPF PMM + prob >0.50"',
+        cat='QPF (PMM)', name='1-h QPF PMM + prob >0.50"',
         ftype='pmmn', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,1),
         cmap='qpf', units='in', convert=lambda x: x/25.4,
         overlay=[dict(ftype='prob', var='tp_sfc',
@@ -989,7 +989,7 @@ PRODUCTS = {
         spc_title='1-hr QPF (in; PMM), neighborhood prob >0.50 in (contours)'),
 
     'qpf_3h_pmmn_series': dict(
-        cat='QPF', name='3-h QPF PMM + prob >1" + >3"',
+        cat='QPF (PMM)', name='3-h QPF PMM + prob >1" + >3"',
         ftype='pmmn', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,3),
         cmap='qpf', units='in', convert=lambda x: x/25.4,
         # Mirrors the SPC HREF "3-hr QPF (PMM) + NP[QPF>1"] + NP[QPF>3"]" plot:
@@ -1013,138 +1013,68 @@ PRODUCTS = {
                    'and >3.00 in (red) contours')),
 
     'qpf_6h_lpmm_series': dict(
-        cat='QPF', name='6-h QPF LPMM + prob >1.0"',
+        cat='QPF (LPMM)', name='6-h QPF LPMM',
         ftype='lpmm', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,6),
         cmap='qpf', units='in', convert=lambda x: x/25.4,
-        overlay=[dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,6),
-                      thresh=25.4, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#3a1f00', linewidths=[0.8,1.2,1.6,2.0,2.4])],
-        spc_title='6-hr QPF (in; LPMM), neighborhood prob >1.00 in (contours)'),
+        spc_title='6-hr QPF (in; LPMM)'),
 
     # ---- QPF PMM extended accumulation windows (6/12/24-h) -----------------
     'qpf_6h_pmmn_series': dict(
-        cat='QPF', name='6-h QPF PMM + prob >1" + >2"',
+        cat='QPF (PMM)', name='6-h QPF PMM',
         ftype='pmmn', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,6),
         min_fhr=6, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        overlay=[dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,6),
-                      thresh=25.4, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#000000', linewidths=[0.8,1.2,1.6,2.0,2.4]),
-                 dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,6),
-                      thresh=50.8, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#c81e1e', linewidths=[1.1,1.5,1.9,2.3,2.7])],
-        spc_title='6-hr QPF (in; PMM), neighborhood prob >1.00 in (black) and >2.00 in (red) contours'),
+        spc_title='6-hr QPF (in; PMM)'),
 
     'qpf_12h_pmmn_series': dict(
-        cat='QPF', name='12-h QPF PMM + prob >2" + >3"',
+        cat='QPF (PMM)', name='12-h QPF PMM',
         ftype='pmmn', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,12),
         min_fhr=12, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        overlay=[dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,12),
-                      thresh=50.8, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#000000', linewidths=[0.8,1.2,1.6,2.0,2.4]),
-                 dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,12),
-                      thresh=76.2, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#c81e1e', linewidths=[1.1,1.5,1.9,2.3,2.7])],
-        spc_title='12-hr QPF (in; PMM), neighborhood prob >2.00 in (black) and >3.00 in (red) contours'),
+        spc_title='12-hr QPF (in; PMM)'),
 
     'qpf_24h_pmmn_series': dict(
-        cat='QPF', name='24-h QPF PMM + prob >3" + >5"',
+        cat='QPF (PMM)', name='24-h QPF PMM',
         ftype='pmmn', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,24),
         min_fhr=24, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        overlay=[dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,24),
-                      thresh=76.2, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#000000', linewidths=[0.8,1.2,1.6,2.0,2.4]),
-                 dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,24),
-                      thresh=127.0, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#c81e1e', linewidths=[1.1,1.5,1.9,2.3,2.7])],
-        spc_title='24-hr QPF (in; PMM), neighborhood prob >3.00 in (black) and >5.00 in (red) contours'),
+        spc_title='24-hr QPF (in; PMM)'),
 
     # ---- QPF LPMM extended accumulation windows (1/3/12/24-h) --------------
     'qpf_1h_lpmm_series': dict(
-        cat='QPF', name='1-h QPF LPMM + prob >0.50"',
+        cat='QPF (LPMM)', name='1-h QPF LPMM',
         ftype='lpmm', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,1),
         cmap='qpf', units='in', convert=lambda x: x/25.4,
-        overlay=[dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,1),
-                      thresh=12.7, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#3a1f00', linewidths=[0.8,1.2,1.6,2.0,2.4])],
-        spc_title='1-hr QPF (in; LPMM), neighborhood prob >0.50 in (contours)'),
+        spc_title='1-hr QPF (in; LPMM)'),
 
     'qpf_3h_lpmm_series': dict(
-        cat='QPF', name='3-h QPF LPMM + prob >1" + >3"',
+        cat='QPF (LPMM)', name='3-h QPF LPMM',
         ftype='lpmm', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,3),
         cmap='qpf', units='in', convert=lambda x: x/25.4,
-        overlay=[dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,3),
-                      thresh=25.4, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#000000', linewidths=[0.8,1.2,1.6,2.0,2.4]),
-                 dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,3),
-                      thresh=76.2, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#c81e1e', linewidths=[1.1,1.5,1.9,2.3,2.7])],
-        spc_title='3-hr QPF (in; LPMM), neighborhood prob >1.00 in (black) and >3.00 in (red) contours'),
+        spc_title='3-hr QPF (in; LPMM)'),
 
     'qpf_12h_lpmm_series': dict(
-        cat='QPF', name='12-h QPF LPMM + prob >2" + >3"',
+        cat='QPF (LPMM)', name='12-h QPF LPMM',
         ftype='lpmm', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,12),
         min_fhr=12, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        overlay=[dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,12),
-                      thresh=50.8, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#000000', linewidths=[0.8,1.2,1.6,2.0,2.4]),
-                 dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,12),
-                      thresh=76.2, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#c81e1e', linewidths=[1.1,1.5,1.9,2.3,2.7])],
-        spc_title='12-hr QPF (in; LPMM), neighborhood prob >2.00 in (black) and >3.00 in (red) contours'),
+        spc_title='12-hr QPF (in; LPMM)'),
 
     'qpf_24h_lpmm_series': dict(
-        cat='QPF', name='24-h QPF LPMM + prob >3" + >5"',
+        cat='QPF (LPMM)', name='24-h QPF LPMM',
         ftype='lpmm', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,24),
         min_fhr=24, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        overlay=[dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,24),
-                      thresh=76.2, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#000000', linewidths=[0.8,1.2,1.6,2.0,2.4]),
-                 dict(ftype='prob', var='tp_sfc',
-                      step_from_fhr=lambda f: _step_for_acc(f,24),
-                      thresh=127.0, style='contour',
-                      levels=[10,30,50,70,90], smooth=2.0,
-                      colors='#c81e1e', linewidths=[1.1,1.5,1.9,2.3,2.7])],
-        spc_title='24-hr QPF (in; LPMM), neighborhood prob >3.00 in (black) and >5.00 in (red) contours'),
+        spc_title='24-hr QPF (in; LPMM)'),
 
-    'qpf_1h_prob_50':  dict(cat='QPF', name='Prob 1-h QPF > 0.50"',
+    'qpf_1h_prob_50':  dict(cat='QPF (Prob)', name='Prob 1-h QPF > 0.50"',
         ftype='prob', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,1),
         thresh=12.7, cmap='prob', units='%',
         spc_title='Neighborhood probability of 1-hr QPF > 0.50 in'),
-    'qpf_1h_prob_100': dict(cat='QPF', name='Prob 1-h QPF > 1.00"',
+    'qpf_1h_prob_100': dict(cat='QPF (Prob)', name='Prob 1-h QPF > 1.00"',
         ftype='prob', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,1),
         thresh=25.4, cmap='prob', units='%',
         spc_title='Neighborhood probability of 1-hr QPF > 1.00 in'),
-    'qpf_1h_prob_200': dict(cat='QPF', name='Prob 1-h QPF > 2.00"',
+    'qpf_1h_prob_200': dict(cat='QPF (Prob)', name='Prob 1-h QPF > 2.00"',
         ftype='prob', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,1),
         thresh=50.8, cmap='prob', units='%',
         spc_title='Neighborhood probability of 1-hr QPF > 2.00 in'),
-    'qpf_1h_prob_300': dict(cat='QPF', name='Prob 1-h QPF > 3.00"',
+    'qpf_1h_prob_300': dict(cat='QPF (Prob)', name='Prob 1-h QPF > 3.00"',
         ftype='prob', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,1),
         thresh=76.2, cmap='prob', units='%',
         spc_title='Neighborhood probability of 1-hr QPF > 3.00 in'),
@@ -1155,7 +1085,7 @@ PRODUCTS = {
     # neighborhood-probability record. Compute it from the 5 member files'
     # 1-h APCP instead (member_prob recipe), with a neighborhood radius so it
     # reads like SPC's smoothed field rather than a blocky 5-member fraction.
-    'qpf_1h_prob_001': dict(cat='QPF', name='1-h QPF ens P(>0.01")',
+    'qpf_1h_prob_001': dict(cat='QPF (Prob)', name='1-h QPF ens P(>0.01")',
         recipe='member_prob', member_product='2dfld', n_members=5,
         var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,1),
         thresh=0.254, nbrhd_km=40.0, cmap='prob', units='%',
@@ -1163,37 +1093,37 @@ PRODUCTS = {
 
 
     # ---- 3-h QPF probabilities (neighborhood) ------------------------------
-    'qpf_3h_prob_100': dict(cat='QPF', name='Prob 3-h QPF > 1.00"',
+    'qpf_3h_prob_100': dict(cat='QPF (Prob)', name='Prob 3-h QPF > 1.00"',
         ftype='prob', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,3),
         thresh=25.4, cmap='prob', units='%',
         spc_title='Neighborhood probability of 3-hr QPF > 1.00 in'),
-    'qpf_3h_prob_200': dict(cat='QPF', name='Prob 3-h QPF > 2.00"',
+    'qpf_3h_prob_200': dict(cat='QPF (Prob)', name='Prob 3-h QPF > 2.00"',
         ftype='prob', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,3),
         thresh=50.8, cmap='prob', units='%',
         spc_title='Neighborhood probability of 3-hr QPF > 2.00 in'),
-    'qpf_3h_prob_300': dict(cat='QPF', name='Prob 3-h QPF > 3.00"',
+    'qpf_3h_prob_300': dict(cat='QPF (Prob)', name='Prob 3-h QPF > 3.00"',
         ftype='prob', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,3),
         thresh=76.2, cmap='prob', units='%',
         spc_title='Neighborhood probability of 3-hr QPF > 3.00 in'),
-    'qpf_3h_prob_500': dict(cat='QPF', name='Prob 3-h QPF > 5.00"',
+    'qpf_3h_prob_500': dict(cat='QPF (Prob)', name='Prob 3-h QPF > 5.00"',
         ftype='prob', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,3),
         thresh=127, cmap='prob', units='%',
         spc_title='Neighborhood probability of 3-hr QPF > 5.00 in'),
 
     # ---- 6-h QPF probabilities (strict: no data before F06) ----------------
-    'qpf_6h_prob_200': dict(cat='QPF', name='Prob 6-h QPF > 2.00"',
+    'qpf_6h_prob_200': dict(cat='QPF (Prob)', name='Prob 6-h QPF > 2.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-6}-{f}" if f >= 6 else None,
         min_fhr=6,
         thresh=50.8, cmap='prob', units='%',
         spc_title='Neighborhood probability of 6-hr QPF > 2.00 in'),
-    'qpf_6h_prob_300': dict(cat='QPF', name='Prob 6-h QPF > 3.00"',
+    'qpf_6h_prob_300': dict(cat='QPF (Prob)', name='Prob 6-h QPF > 3.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-6}-{f}" if f >= 6 else None,
         min_fhr=6,
         thresh=76.2, cmap='prob', units='%',
         spc_title='Neighborhood probability of 6-hr QPF > 3.00 in'),
-    'qpf_6h_prob_500': dict(cat='QPF', name='Prob 6-h QPF > 5.00"',
+    'qpf_6h_prob_500': dict(cat='QPF (Prob)', name='Prob 6-h QPF > 5.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-6}-{f}" if f >= 6 else None,
         min_fhr=6,
@@ -1201,19 +1131,19 @@ PRODUCTS = {
         spc_title='Neighborhood probability of 6-hr QPF > 5.00 in'),
 
     # ---- 12-h QPF probabilities (valid at F12, F24, F36) -------------------
-    'qpf_12h_prob_300': dict(cat='QPF', name='Prob 12-h QPF > 3.00"',
+    'qpf_12h_prob_300': dict(cat='QPF (Prob)', name='Prob 12-h QPF > 3.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-12}-{f}" if f >= 12 else None,
         min_fhr=12,
         thresh=76.2, cmap='prob', units='%',
         spc_title='Neighborhood probability of 12-hr QPF > 3.00 in'),
-    'qpf_12h_prob_500': dict(cat='QPF', name='Prob 12-h QPF > 5.00"',
+    'qpf_12h_prob_500': dict(cat='QPF (Prob)', name='Prob 12-h QPF > 5.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-12}-{f}" if f >= 12 else None,
         min_fhr=12,
         thresh=127, cmap='prob', units='%',
         spc_title='Neighborhood probability of 12-hr QPF > 5.00 in'),
-    'qpf_12h_prob_800': dict(cat='QPF', name='Prob 12-h QPF > 8.00"',
+    'qpf_12h_prob_800': dict(cat='QPF (Prob)', name='Prob 12-h QPF > 8.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-12}-{f}" if f >= 12 else None,
         min_fhr=12,
@@ -1223,25 +1153,25 @@ PRODUCTS = {
     # ---- 24-h QPF probabilities (valid at F24 in the F01-F36 window) -------
     # REFS encodes the 24h running total as "0-1 day acc fcst" in the .idx;
     # idx_match.fhr_marker handles this when step == fhr == 24.
-    'qpf_24h_prob_200': dict(cat='QPF', name='Prob 24-h QPF > 2.00"',
+    'qpf_24h_prob_200': dict(cat='QPF (Prob)', name='Prob 24-h QPF > 2.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-24}-{f}" if f >= 24 else None,
         min_fhr=24,
         thresh=50.8, cmap='prob', units='%',
         spc_title='Neighborhood probability of 24-hr QPF > 2.00 in'),
-    'qpf_24h_prob_300': dict(cat='QPF', name='Prob 24-h QPF > 3.00"',
+    'qpf_24h_prob_300': dict(cat='QPF (Prob)', name='Prob 24-h QPF > 3.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-24}-{f}" if f >= 24 else None,
         min_fhr=24,
         thresh=76.2, cmap='prob', units='%',
         spc_title='Neighborhood probability of 24-hr QPF > 3.00 in'),
-    'qpf_24h_prob_500': dict(cat='QPF', name='Prob 24-h QPF > 5.00"',
+    'qpf_24h_prob_500': dict(cat='QPF (Prob)', name='Prob 24-h QPF > 5.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-24}-{f}" if f >= 24 else None,
         min_fhr=24,
         thresh=127, cmap='prob', units='%',
         spc_title='Neighborhood probability of 24-hr QPF > 5.00 in'),
-    'qpf_24h_prob_800': dict(cat='QPF', name='Prob 24-h QPF > 8.00"',
+    'qpf_24h_prob_800': dict(cat='QPF (Prob)', name='Prob 24-h QPF > 8.00"',
         ftype='prob', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-24}-{f}" if f >= 24 else None,
         min_fhr=24,
@@ -1250,7 +1180,7 @@ PRODUCTS = {
 
     # ---- 6-h QPF ensemble mean + prob contour (from mean file) -------------
     'qpf_6h_mean_series': dict(
-        cat='QPF', name='6-h QPF mean + prob >1.0"',
+        cat='QPF (Mean)', name='6-h QPF mean + prob >1.0"',
         ftype='mean', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-6}-{f}" if f >= 6 else None,
         min_fhr=6,
@@ -1785,15 +1715,68 @@ class REFSDataProcessor:
                 try: fcp.unlink()
                 except OSError: pass
 
+        # L2 remote field cache (survives container restarts).
+        # Checked only on local miss; adds ~300-500 ms vs 3-5 s for GRIB decode.
+        if fcp is not None:
+            try:
+                from app.field_persist import stable_key, try_load_remote
+                sk = stable_key(filepath, spec, step, thresh, below)
+                if sk and try_load_remote(sk, fcp.parent):
+                    # Remote copy landed in fcp.parent under the stable key name;
+                    # re-check the local path (local key may differ on this host).
+                    remote_fcp = fcp.parent / f"{sk}.npz"
+                    if remote_fcp.exists():
+                        try:
+                            z = np.load(remote_fcp, allow_pickle=False)
+                            g = np.load(fcp.parent / str(z['grid']), allow_pickle=False)
+                            return (z['data'].astype(np.float64),
+                                    g['lats'].astype(np.float64),
+                                    g['lons'].astype(np.float64))
+                        except Exception:
+                            try: remote_fcp.unlink()
+                            except OSError: pass
+            except ImportError:
+                pass
+            except Exception:
+                pass
+
         if HAS_PYGRIB:
             r = self._pygrib_load(filepath, spec, step, thresh, below)
             if r[0] is not None:
                 self._field_cache_save(fcp, *r)
+                self._field_persist_push(filepath, spec, step, thresh, below, fcp)
                 return r
         r = self._cfgrib_load(filepath, spec, step, thresh, below=below)
         if r[0] is not None:
             self._field_cache_save(fcp, *r)
+            self._field_persist_push(filepath, spec, step, thresh, below, fcp)
         return r
+
+    @staticmethod
+    def _field_persist_push(filepath, spec, step, thresh, below, fcp):
+        """Fire-and-forget push of a freshly decoded field to remote cache."""
+        try:
+            from app.field_persist import stable_key, push_field_async, enabled
+            if not enabled() or fcp is None:
+                return
+            sk = stable_key(filepath, spec, step, thresh, below)
+            if not sk:
+                return
+            import threading, asyncio as _aio
+            # Derive grid path from the saved field file.
+            import numpy as _np
+            z = _np.load(fcp, allow_pickle=False)
+            gname = str(z['grid'])
+            gpath = fcp.parent / gname
+            gk = gname.removeprefix('grid_').removesuffix('.npz')
+            def _push():
+                try:
+                    _aio.run(push_field_async(sk, fcp, grid_key=gk, grid_path=gpath))
+                except Exception:
+                    pass
+            threading.Thread(target=_push, daemon=True).start()
+        except Exception:
+            pass
 
     _FIELD_CACHE_VERSION = 1
 
