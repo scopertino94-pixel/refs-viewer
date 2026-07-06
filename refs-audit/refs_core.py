@@ -1018,26 +1018,15 @@ PRODUCTS = {
         cmap='qpf', units='in', convert=lambda x: x/25.4,
         spc_title='6-hr QPF (in; LPMM)'),
 
-    # ---- QPF PMM extended accumulation windows (6/12/24-h) -----------------
-    'qpf_6h_pmmn_series': dict(
-        cat='QPF (PMM)', name='6-h QPF PMM',
-        ftype='pmmn', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,6),
-        min_fhr=6, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        spc_title='6-hr QPF (in; PMM)'),
-
-    'qpf_12h_pmmn_series': dict(
-        cat='QPF (PMM)', name='12-h QPF PMM',
-        ftype='pmmn', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,12),
-        min_fhr=12, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        spc_title='12-hr QPF (in; PMM)'),
-
-    'qpf_24h_pmmn_series': dict(
-        cat='QPF (PMM)', name='24-h QPF PMM',
-        ftype='pmmn', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,24),
-        min_fhr=24, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        spc_title='24-hr QPF (in; PMM)'),
-
-    # ---- QPF LPMM extended accumulation windows (1/3/12/24-h) --------------
+    # ---- QPF LPMM native accumulation windows (1/3-h) ----------------------
+    # NOTE: REFS/HREF publish deterministic QPF only at 1-h and 3-h in the
+    # pmmn/lpmm files (REFS lpmm additionally carries a native 6-h window —
+    # see qpf_6h_lpmm_series above). 6/12/24-h PMM and 12/24-h LPMM were
+    # removed 2026-07-06: no backing records exist, so they rendered "No data"
+    # (and, before the cfgrib stepRange fix, silently fell back to the 3-h
+    # record). Longer accumulations remain available as neighborhood
+    # probabilities (prob file DOES publish 6/12/24-h windows) and as the
+    # 6-h / 24-h ensemble MEAN (additive, so summing is valid).
     'qpf_1h_lpmm_series': dict(
         cat='QPF (LPMM)', name='1-h QPF LPMM',
         ftype='lpmm', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,1),
@@ -1049,18 +1038,6 @@ PRODUCTS = {
         ftype='lpmm', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,3),
         cmap='qpf', units='in', convert=lambda x: x/25.4,
         spc_title='3-hr QPF (in; LPMM)'),
-
-    'qpf_12h_lpmm_series': dict(
-        cat='QPF (LPMM)', name='12-h QPF LPMM',
-        ftype='lpmm', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,12),
-        min_fhr=12, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        spc_title='12-hr QPF (in; LPMM)'),
-
-    'qpf_24h_lpmm_series': dict(
-        cat='QPF (LPMM)', name='24-h QPF LPMM',
-        ftype='lpmm', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,24),
-        min_fhr=24, cmap='qpf', units='in', convert=lambda x: x/25.4,
-        spc_title='24-hr QPF (in; LPMM)'),
 
     'qpf_1h_prob_50':  dict(cat='QPF (Prob)', name='Prob 1-h QPF > 0.50"',
         ftype='prob', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,1),
