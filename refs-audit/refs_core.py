@@ -1982,6 +1982,17 @@ class REFSDataProcessor:
                 loose_fk = {}
                 if spec.get('tlev'):
                     loose_fk['typeOfLevel'] = spec['tlev']
+                # Preserve the stepRange filter when an accumulation window was
+                # explicitly requested. Dropping it here was safe for byte-range
+                # REFS partials (they contain ONLY the records we fetched), but
+                # HREF downloads WHOLE files — so a loose open with no step would
+                # silently grab an arbitrary APCP window. That is exactly why the
+                # HREF 6-hr and 12-hr QPF tiles rendered identical (both fell back
+                # to the same available 1-/3-hr accumulation). Instantaneous
+                # fields (VIL/DCAPE, the case this fallback exists for) pass
+                # step=None, so their NCEP-local recovery is unaffected.
+                if step is not None:
+                    loose_fk['stepRange'] = step
                 ds_loose = _open(loose_fk)
                 if ds_loose is not None and ds_loose.data_vars:
                     ds = ds_loose
