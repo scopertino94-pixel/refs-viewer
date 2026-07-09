@@ -2540,7 +2540,7 @@ function _drawMove(e) {
   _drawRectEl.style.width = Math.abs(e.clientX - _drawStart.x) + "px";
   _drawRectEl.style.height = Math.abs(e.clientY - _drawStart.y) + "px";
 }
-function _drawUp() {
+async function _drawUp() {
   _drawing = false;
   document.removeEventListener("mousemove", _drawMove);
   document.removeEventListener("mouseup", _drawUp);
@@ -2551,51 +2551,44 @@ function _drawUp() {
     endDrawMode(); return;
   }
   const img = $("frame");
-  const ll1 = _pixelToLatLon(r.left,  r.top,    img);
-  const ll2 = _pixelToLatLon(r.right, r.bottom, img);
-  if (!ll1 || !ll2) {
-    setStatus("Rectangle was outside the map area. Try again.");
-    endDrawMode(); return;
-  }
+  // Convert the drawn corners to image fractions, then let the backend invert
+  // them with the tile's REAL Lambert projection. Inverting Lambert in the
+  // browser with a linear/equirectangular guess lands the box far off (a box
+  // over NJ/PA/MD came out over the Great Lakes), so the projection-aware
+  // inverse must happen server-side.
+  const f1 = frameFractions(img, { clientX: r.left,  clientY: r.top });
+  const f2 = frameFractions(img, { clientX: r.right, clientY: r.bottom });
   endDrawMode();
   _drawJustEnded = Date.now();
-  const bbox = [
-    Math.min(ll1.lon, ll2.lon), Math.min(ll1.lat, ll2.lat),
-    Math.max(ll1.lon, ll2.lon), Math.max(ll1.lat, ll2.lat),
-  ];
-  const nm = `Custom ${bbox[1].toFixed(0)}-${bbox[3].toFixed(0)}N, ` +
-             `${Math.abs(bbox[0]).toFixed(0)}-${Math.abs(bbox[2]).toFixed(0)}W`;
-  openCustomSectorModal({ key: null, name: nm, bbox });
+  if (!f1 || !f2) {
+    setStatus("Draw a box inside the map area. Try again.");
+    return;
+  }
+  setStatus("Mapping drawn area…");
+  const qs = new URLSearchParams();
+  qs.set("fx1", f1.fx.toFixed(5)); qs.set("fy1", f1.fy.toFixed(5));
+  qs.set("fx2", f2.fx.toFixed(5)); qs.set("fy2", f2.fy.toFixed(5));
+  probeSectorParams(qs);
+  try {
+    const res = await fetch(`/api/unproject?${qs.toString()}`).then(x => x.json());
+    if (!res || !res.ok) {
+      setStatus("Couldn't map the drawn area — try again.");
+      return;
+    }
+    const bbox = [res.lon_min, res.lat_min, res.lon_max, res.lat_max];
+    const nm = `Custom ${bbox[1].toFixed(0)}-${bbox[3].toFixed(0)}N, ` +
+               `${Math.abs(bbox[0]).toFixed(0)}-${Math.abs(bbox[2]).toFixed(0)}W`;
+    setStatus("");
+    openCustomSectorModal({ key: null, name: nm, bbox });
+  } catch {
+    setStatus("Couldn't map the drawn area — try again.");
+  }
 }
 
-// Approximate inverse equirectangular projection based on the *current* sector
-// bbox. Good enough for picking points — final render uses the precise
-// projection on the backend.
-function _pixelToLatLon(clientX, clientY, img) {
-  const rect = img.getBoundingClientRect();
-  const natW = img.naturalWidth  || rect.width;
-  const natH = img.naturalHeight || rect.height;
-  const scale = Math.min(rect.width / natW, rect.height / natH);
-  const displayW = natW * scale, displayH = natH * scale;
-  const padX = (rect.width  - displayW) / 2;
-  const padY = (rect.height - displayH) / 2;
-  const ix = clientX - rect.left - padX;
-  const iy = clientY - rect.top  - padY;
-  if (ix < 0 || iy < 0 || ix > displayW || iy > displayH) return null;
-  // refs_core's plot reserves ~85 px at the top for title; back that out.
-  const titleFrac = 85 / natH;
-  const dataTop = displayH * titleFrac;
-  if (iy < dataTop) return null;
-  const dataY = (iy - dataTop) / (displayH - dataTop);
-  const dataX = ix / displayW;
-  const bbox = currentBbox();
-  if (!bbox) return null;
-  const [lonMin, latMin, lonMax, latMax] = bbox;
-  return {
-    lon: lonMin + dataX * (lonMax - lonMin),
-    lat: latMax - dataY * (latMax - latMin),
-  };
-}
+// (Removed the client-side _pixelToLatLon equirectangular estimate — it could
+// not account for the tiles' Lambert Conformal projection or the MAP_BOX axes
+// inset, so drawn boxes landed far off. The draw flow now sends image
+// fractions to /api/unproject for a projection-accurate inverse.)
 
 // ---------- Export -------------------------------------------------------
 function _triggerDownload(blob, filename) {

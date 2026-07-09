@@ -61,6 +61,7 @@ from .needed_records import needed_matches      # noqa: E402
 from .render import render as render_png  # noqa: E402
 from .render import probe_value as _probe_value_worker  # noqa: E402
 from .render import probe_series as _probe_series_worker  # noqa: E402
+from .render import unproject_box as _unproject_worker  # noqa: E402
 
 # refs_core's downloaded-grib cache path (matches DEFAULT_LOCAL)
 _REFS_CACHE = Path(core.DEFAULT_LOCAL)
@@ -1164,6 +1165,35 @@ async def meteogram_endpoint(date: str, run: int, pid: str,
     except asyncio.TimeoutError:
         raise HTTPException(504, "Meteogram timed out")
     return {"ok": True, "series": res}
+
+
+@app.get("/api/unproject")
+async def unproject_endpoint(fx1: float, fy1: float, fx2: float, fy2: float,
+                            region: str = "CONUS", bbox: str = "",
+                            sector_name: str = ""):
+    """Invert two drawn-box corners (image fractions, fy from the top) to a
+    lon/lat bounding box using the tile's real Lambert projection. Used by the
+    'draw a custom sector' flow so the drawn box maps to the right geography.
+    Projection geometry is independent of model/date/fhr — only the current
+    view's region/bbox matters."""
+    region_arg, bbox_t, sector_label, _ck = _resolve_sector(
+        region, bbox, sector_name)
+    loop = asyncio.get_running_loop()
+    fut = loop.run_in_executor(
+        _render_executor, _unproject_worker,
+        [fx1, fx2], [fy1, fy2], region_arg, bbox_t, sector_label)
+    try:
+        pts = await asyncio.wait_for(fut, timeout=15)
+    except asyncio.TimeoutError:
+        return {"ok": False}
+    if not pts or len(pts) < 2 or pts[0] is None or pts[1] is None:
+        return {"ok": False}
+    (lon1, lat1), (lon2, lat2) = pts[0], pts[1]
+    return {
+        "ok": True,
+        "lon_min": min(lon1, lon2), "lat_min": min(lat1, lat2),
+        "lon_max": max(lon1, lon2), "lat_max": max(lat1, lat2),
+    }
 
 
 @app.get("/api/probe/{date}/{run}/{pid}/{fhr}")
