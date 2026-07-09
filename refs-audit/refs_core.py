@@ -248,11 +248,13 @@ def cmap_pwat():
 
 def cmap_pwat_in():
     # PWAT in inches. Tan (dry) → green (moist) → blue (very moist) →
-    # purple/magenta (tropical). Levels chosen to highlight the
-    # convectively-meaningful 1.0-2.0" band that PWAT is mostly read for.
-    cs = ['#c9a97a','#dccaa0','#bfe6bf','#62b262','#1f7a1f',
-          '#5b8aff','#1f3fbf','#8a3aff','#c91fc9','#ff1f80']
-    lv = [0.25, 0.50, 0.75, 1.00, 1.25, 1.50, 1.75, 2.00, 2.50, 3.00]
+    # purple/magenta (tropical). Uniform 0.25" steps to 3.0" so the moist
+    # gradients read finely (was 0.5" spacing above 2").
+    anchors = ['#c9a97a','#dccaa0','#bfe6bf','#62b262','#1f7a1f',
+               '#5b8aff','#1f3fbf','#8a3aff','#c91fc9','#ff1f80']
+    lv = [round(0.25 * i, 2) for i in range(1, 13)]   # 0.25..3.00 by 0.25
+    lcm = LinearSegmentedColormap.from_list('pwat_ramp', anchors, N=len(lv))
+    cs = [matplotlib.colors.to_hex(lcm(i)) for i in range(len(lv))]
     return _cmap(cs, lv, 'pwat_in')
 
 def cmap_retop_kft():
@@ -274,11 +276,14 @@ def cmap_srh():
     return _cmap(cs, lv, 'srh')
 
 def cmap_t2m():
-    # cold→warm continuous-ish, degF
-    cs = ['#5a0094','#3b1fb0','#1f50d4','#1f8de8','#33d6ee',
-          '#a6f0a6','#3cb43c','#ffe66d','#ff9a3c','#ff3838',
-          '#bf1a8a','#7a0eb0']
-    lv = [-20,0,10,20,32,40,50,60,70,80,90,100,110]
+    # cold→warm, degF. Interpolate the anchor ramp to 5°F steps so the fill
+    # resolves fine temperature gradients (was mostly 10°F bins).
+    anchors = ['#5a0094','#3b1fb0','#1f50d4','#1f8de8','#33d6ee',
+               '#a6f0a6','#3cb43c','#ffe66d','#ff9a3c','#ff3838',
+               '#bf1a8a','#7a0eb0']
+    lv = list(range(-20, 115, 5))   # -20..110 by 5
+    lcm = LinearSegmentedColormap.from_list('t2m_ramp', anchors, N=len(lv))
+    cs = [matplotlib.colors.to_hex(lcm(i)) for i in range(len(lv))]
     return _cmap(cs, lv, 't2m')
 
 def cmap_td2m():
@@ -634,10 +639,27 @@ def cmap_divergence():
 # Absolute vorticity (10^-5 / s) — matches NAM vorticity chart style.
 # Green→yellow→orange→red→black ramp, positive only (cyclonic).
 def cmap_vorticity():
-    cs = ['#d4f5d4','#7edc7e','#00bb00','#ffff00',
-          '#ffbf00','#ff6600','#e00000','#880000','#000000','#5a00aa','#1a0050']
-    lv = [2, 5, 10, 15, 20, 25, 30, 40, 50, 60, 80]
+    # 500 mb ABSOLUTE vorticity. Planetary vorticity (f) alone is ~9-10 ×10⁻⁵
+    # s⁻¹ at mid-latitudes, so a low floor shades the whole map green. Start at
+    # 10 so only enhanced vorticity (shortwaves / vort maxes) stands out.
+    cs = ['#9be09b','#4fc44f','#00a800','#ffe000',
+          '#ffa000','#ff5000','#e00000','#900000','#5a00aa','#1a0050']
+    lv = [10, 12, 14, 16, 20, 25, 30, 40, 50, 60]
     return _cmap(cs, lv, 'vort')
+
+def cmap_wind_sfc():
+    # Surface / 10-m wind speed (kt). Scaled for boundary-layer winds — an
+    # ensemble mean rarely exceeds ~40-50 kt — not the 30-180 kt jet ramp.
+    # Fine 5-kt steps to 60, then coarser 10-kt steps to 100.
+    lv = [5,10,15,20,25,30,35,40,45,50,55,60,70,80,90,100]
+    return _cmap(_mpl_palette('turbo', lv), lv, 'wind_sfc')
+
+def cmap_shear():
+    # 0-6 km bulk wind shear (kt). Meaningful severe thresholds: ~20 marginal,
+    # 30-40 supercell-supportive, 50-60 strong. Capped at 80 — 0-6 km bulk
+    # shear physically doesn't reach the old 180-kt ceiling.
+    lv = [15,20,25,30,35,40,50,60,70,80]
+    return _cmap(_mpl_palette('turbo', lv), lv, 'shear')
 
 # Hail diameter in inches. NWS severe = 1.0", significant severe = 2.0".
 # Member 2dfld field is in m (units of meters of equivalent ice diameter),
@@ -1193,20 +1215,20 @@ PRODUCTS = {
     'vort_500_mean': dict(cat='Kinematics', name='500 mb abs vorticity + heights',
         recipe='vort_level', level=500, cmap='vort',
         spc_title='500 mb absolute vorticity (×10⁻⁵ s⁻¹; shaded), heights (dam), wind barbs, ensemble mean'),
-    'wind_700_mean': dict(cat='Kinematics', name='700 mb wind + RH + heights + omega',
+    'wind_700_mean': dict(cat='Kinematics', name='700 mb RH + wind + heights + omega',
         recipe='wind_700_rh', level=700, cmap='wind500',
-        spc_title='700 mb wind (kt), heights (dam), RH >70% (green shading), vertical motion contours'),
-    'wind_850_mean': dict(cat='Kinematics', name='850 mb wind + RH + temp + heights',
+        spc_title='700 mb relative humidity (%; shaded), heights (dam), wind barbs, vertical motion contours'),
+    'wind_850_mean': dict(cat='Kinematics', name='850 mb RH + wind + temp + heights',
         recipe='wind_850_temp', level=850, cmap='wind500',
-        spc_title='850 mb wind (kt), heights (dam), temperature (°C, contours), RH >80% (green shading)'),
-    'wind_925_mean': dict(cat='Kinematics', name='925 mb wind + RH + temp + heights',
+        spc_title='850 mb relative humidity (%; shaded), heights (dam), wind barbs, temperature (°C, contours)'),
+    'wind_925_mean': dict(cat='Kinematics', name='925 mb RH + wind + temp + heights',
         recipe='wind_850_temp', level=925, cmap='wind500',
-        spc_title='925 mb wind (kt), heights (dam), temperature (°C, contours), RH >80% (green shading)'),
+        spc_title='925 mb relative humidity (%; shaded), heights (dam), wind barbs, temperature (°C, contours)'),
     'wind_10m_mean': dict(cat='Kinematics', name='10-m wind mean',
-        recipe='wind_10m', cmap='wind500',
+        recipe='wind_10m', cmap='wind_sfc',
         spc_title='10 m wind (kt), ensemble mean'),
     'shear_06km_mean': dict(cat='Kinematics', name='0-6 km bulk shear mean',
-        ftype='mean', var='vwsh_06km', cmap='wind500', units='kt',
+        ftype='mean', var='vwsh_06km', cmap='shear', units='kt',
         convert=lambda x: x*1.94384,
         spc_title='0-6 km bulk wind shear (kt), ensemble mean -- supercell discriminator'),
 
@@ -2709,10 +2731,21 @@ class PlotManager:
         else:
             lons2d, lats2d = lons, lats
 
-        masked = np.ma.masked_less(spd_kt, lv[0])
-        cf = ax.pcolormesh(lons2d, lats2d, masked, cmap=cm, norm=norm,
-                           transform=ccrs.PlateCarree(), zorder=3,
-                           shading='nearest', antialiased=False)
+        # 700/850/925 mb (rh present) fill RELATIVE HUMIDITY, not wind speed —
+        # wind is read off the barbs, so a wind-speed fill just adds clutter.
+        # 250/500 mb keep the wind-speed fill.
+        rh_fill = rh is not None
+        _RH_LEVELS = [60, 70, 80, 90, 100]
+        _RH_COLORS = ['#d3ecd3', '#93d193', '#4caf4c', '#1f7a1f']
+        if rh_fill:
+            cf = ax.contourf(lons2d, lats2d, rh, levels=_RH_LEVELS,
+                             colors=_RH_COLORS, extend='max',
+                             transform=ccrs.PlateCarree(), zorder=3)
+        else:
+            masked = np.ma.masked_less(spd_kt, lv[0])
+            cf = ax.pcolormesh(lons2d, lats2d, masked, cmap=cm, norm=norm,
+                               transform=ccrs.PlateCarree(), zorder=3,
+                               shading='nearest', antialiased=False)
 
         if HAS_SCIPY: hgt_dam = gaussian_filter(hgt_dam, sigma=1.5)
         level = prod['level']
@@ -2727,12 +2760,6 @@ class PlotManager:
         lbls = ax.clabel(cs, inline=True, fontsize=9, fmt='%1.0f')
         self._halo(cs, lbls)
 
-        # RH shading — 700 mb starts at 70%, 850/925 mb at 80%
-        if rh is not None:
-            rh_thresh = 80 if level in (850, 925) else 70
-            ax.contourf(lons2d, lats2d, rh, levels=[rh_thresh, 90, 101],
-                        colors=['#a8d8a8', '#3a9a3a'], alpha=0.45,
-                        transform=ccrs.PlateCarree(), zorder=4)
         # Vertical motion (omega) contours for 700 mb — DZDT in m/s (positive = rising).
         if dzdt is not None:
             if HAS_SCIPY:
@@ -2804,7 +2831,10 @@ class PlotManager:
                  transform=ccrs.PlateCarree(), length=5.2, linewidth=0.55,
                  zorder=7)
 
-        self._colorbar(fig, cf, lv, 'kt', extend='max')
+        if rh_fill:
+            self._colorbar(fig, cf, _RH_LEVELS, '%', extend='max')
+        else:
+            self._colorbar(fig, cf, lv, 'kt', extend='max')
         self._header(fig, prod, run_dt, fhr)
         return fig
 
@@ -3302,7 +3332,8 @@ _CMAPS = {
     'spc_thunder': cmap_spc_thunder, 'spc_ltg': cmap_spc_ltg,
     'cin': cmap_cin, 'qpf': cmap_qpf, 'prob': cmap_prob,
     'w500': cmap_wind500, 'w250': cmap_wind250, 'wind500': cmap_wind500,
-    'wind250': cmap_wind250, 'pwat': cmap_pwat, 'pwat_in': cmap_pwat_in,
+    'wind250': cmap_wind250, 'wind_sfc': cmap_wind_sfc, 'shear': cmap_shear,
+    'pwat': cmap_pwat, 'pwat_in': cmap_pwat_in,
     'retop_kft': cmap_retop_kft, 'srh': cmap_srh, 't2m': cmap_t2m,
     'td2m': cmap_td2m, 'snow': cmap_snow, 'clouds': cmap_clouds, 'vis': cmap_vis,
     'sp_cape': cmap_spread_cape, 'sp_hgt': cmap_spread_hgt,
