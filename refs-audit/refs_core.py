@@ -636,6 +636,14 @@ def cmap_divergence():
     lv = [-30, -20, -10, -5, -1, 1, 5, 10, 20, 30]
     return _cmap(cs, lv, 'div')
 
+def cmap_div_pos():
+    # Positive (divergent) 250 mb divergence only — sequential white→warm→purple.
+    # Upper-level divergence aloft marks storm-top exhaust / ascent forcing.
+    cs = ['#eef4ff','#bfe0ff','#7fc4ff','#ffe066','#ffa030',
+          '#ff5a1f','#d40000','#8a0aa0']
+    lv = [2, 4, 6, 9, 12, 16, 24, 32]
+    return _cmap(cs, lv, 'div_pos')
+
 # Absolute vorticity (10^-5 / s) — matches NAM vorticity chart style.
 # Green→yellow→orange→red→black ramp, positive only (cyclonic).
 def cmap_vorticity():
@@ -2609,6 +2617,16 @@ class PlotManager:
             for ov in overlays:
                 self._draw_overlay(ax, ov)
 
+        # Self-contour: labeled contour lines of the shaded field itself so
+        # values read directly off the fill (SPC-style shaded + contoured).
+        sc = prod.get('self_contour')
+        if sc:
+            self._draw_overlay(ax, dict(
+                data=data, lats=lats, lons=lons,
+                levels=sc['levels'], colors=sc.get('colors'),
+                smooth=sc.get('smooth'),
+                linewidths=sc.get('linewidths', 1.0)))
+
         self._header(fig, prod, run_dt, fhr)
         return fig
 
@@ -2720,7 +2738,7 @@ class PlotManager:
 
     # -------------------------------------------------------------------
     def wind_level(self, u, v, gh, lats, lons, prod, region, run_dt, fhr,
-                   t=None, rh=None, dzdt=None):
+                   t=None, rh=None, dzdt=None, div_fill=False):
         fig, ax = self._setup(region)
         cm, norm, lv = _CMAPS[prod['cmap']]()
         spd_kt = np.sqrt(u**2 + v**2) * 1.94384
@@ -2731,13 +2749,23 @@ class PlotManager:
         else:
             lons2d, lats2d = lons, lats
 
-        # 700/850/925 mb (rh present) fill RELATIVE HUMIDITY, not wind speed —
-        # wind is read off the barbs, so a wind-speed fill just adds clutter.
-        # 250/500 mb keep the wind-speed fill.
+        # Fill mode:
+        #  • div_fill (250 mb divergence product): fill DIVERGENCE (positive
+        #    only — divergent flow aloft), keep heights + barbs.
+        #  • rh present (700/850/925): fill RELATIVE HUMIDITY.
+        #  • otherwise (250/500 wind): fill wind speed.
         rh_fill = rh is not None
         _RH_LEVELS = [60, 70, 80, 90, 100]
         _RH_COLORS = ['#d3ecd3', '#93d193', '#4caf4c', '#1f7a1f']
-        if rh_fill:
+        if div_fill:
+            div = self._divergence(u, v, lats2d, lons2d, lats, lons)
+            if HAS_SCIPY:
+                div = gaussian_filter(div, sigma=3.0)
+            masked = np.ma.masked_less(div, lv[0])   # divergence only (>0)
+            cf = ax.pcolormesh(lons2d, lats2d, masked, cmap=cm, norm=norm,
+                               transform=ccrs.PlateCarree(), zorder=3,
+                               shading='nearest', antialiased=False)
+        elif rh_fill:
             cf = ax.contourf(lons2d, lats2d, rh, levels=_RH_LEVELS,
                              colors=_RH_COLORS, extend='max',
                              transform=ccrs.PlateCarree(), zorder=3)
@@ -2799,22 +2827,11 @@ class PlotManager:
             zero_lbls = ax.clabel(zero, inline=True, fontsize=8, fmt='%g')
             self._halo(zero, zero_lbls, lw=3.6, label_lw=3.2)
 
-        # 250 mb divergence contours (divergence only; positive = solid red).
-        # Computed from ∂u/∂x + ∂v/∂y on a regular lat/lon grid.
-        # Units scaled to 10⁻⁵ s⁻¹.
-        if level == 250:
-            _R = 6371000.0
-            _lat_r = np.deg2rad(lats2d)
-            # grid spacing in radians – use finite diff on first row/col
-            if lats.ndim == 1:
-                _dlat = np.deg2rad(abs(lats[1] - lats[0]))
-                _dlon = np.deg2rad(abs(lons[1] - lons[0]))
-            else:
-                _dlat = np.deg2rad(abs(lats2d[1, 0] - lats2d[0, 0]))
-                _dlon = np.deg2rad(abs(lons2d[0, 1] - lons2d[0, 0]))
-            _du_dx = np.gradient(u, _dlon, axis=1) / (_R * np.cos(_lat_r))
-            _dv_dy = np.gradient(v, _dlat, axis=0) / _R
-            div = (_du_dx + _dv_dy) * 1e5   # 10⁻⁵ s⁻¹
+        # 250 mb divergence contours on the WIND product (divergence only;
+        # positive = solid red). On the dedicated divergence product it's the
+        # fill instead, so skip the contours there.
+        if level == 250 and not div_fill:
+            div = self._divergence(u, v, lats2d, lons2d, lats, lons)
             if HAS_SCIPY:
                 div = gaussian_filter(div, sigma=2.5)
             _div_levs_pos = [8, 16, 24, 32]
@@ -2831,12 +2848,30 @@ class PlotManager:
                  transform=ccrs.PlateCarree(), length=5.2, linewidth=0.55,
                  zorder=7)
 
-        if rh_fill:
+        if div_fill:
+            self._colorbar(fig, cf, lv, '10⁻⁵ s⁻¹', extend='max')
+        elif rh_fill:
             self._colorbar(fig, cf, _RH_LEVELS, '%', extend='max')
         else:
             self._colorbar(fig, cf, lv, 'kt', extend='max')
         self._header(fig, prod, run_dt, fhr)
         return fig
+
+    @staticmethod
+    def _divergence(u, v, lats2d, lons2d, lats, lons):
+        """Horizontal divergence ∂u/∂x + ∂v/∂y on a lat/lon grid, scaled to
+        10⁻⁵ s⁻¹."""
+        _R = 6371000.0
+        _lat_r = np.deg2rad(lats2d)
+        if lats.ndim == 1:
+            _dlat = np.deg2rad(abs(lats[1] - lats[0]))
+            _dlon = np.deg2rad(abs(lons[1] - lons[0]))
+        else:
+            _dlat = np.deg2rad(abs(lats2d[1, 0] - lats2d[0, 0]))
+            _dlon = np.deg2rad(abs(lons2d[0, 1] - lons2d[0, 0]))
+        _du_dx = np.gradient(u, _dlon, axis=1) / (_R * np.cos(_lat_r))
+        _dv_dy = np.gradient(v, _dlat, axis=0) / _R
+        return (_du_dx + _dv_dy) * 1e5
 
     # -------------------------------------------------------------------
     def vort_level(self, u, v, gh, lats, lons, prod, region, run_dt, fhr):
@@ -3339,7 +3374,7 @@ _CMAPS = {
     'sp_cape': cmap_spread_cape, 'sp_hgt': cmap_spread_hgt,
     'sp_mslp': cmap_spread_mslp,
     'composite': cmap_composite, 'lapse': cmap_lapse_rate,
-    'div': cmap_divergence,
+    'div': cmap_divergence, 'div_pos': cmap_div_pos,
     'vort': cmap_vorticity,
     'vil': cmap_vil, 'gust': cmap_gust, 'dcape': cmap_dcape, 'hail': cmap_hail,
     'mconv': cmap_mconv, 'smot': cmap_smotion,
@@ -3370,6 +3405,10 @@ class PlotJob:
                 f"step={step} thresh={ov.get('thresh')} F{fhr:03d}"
             )
             return None
+        # Optional unit conversion so contour levels/labels can be in the
+        # units forecasters read (e.g. bulk shear in kt, not raw m/s).
+        if 'convert' in ov:
+            data = ov['convert'](data)
         # Also log when data exists but is entirely below the minimum contour
         # level (so the user sees no contours and may wonder why).
         try:
@@ -3401,6 +3440,9 @@ class PlotJob:
                                     status_cb, with_temp=True, with_rh_from_dpt=True)
         if recipe == 'vort_level':
             return self._vort_level(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'div_250':
+            return self._wind_level(prod, date_str, run, fhr, region, run_dt,
+                                    status_cb, div_fill=True)
         if recipe == 'ptype_mslp':
             return self._ptype_mslp(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'wind_10m':
@@ -3513,7 +3555,7 @@ class PlotJob:
     # ----- wind level helper -----------------------------------------------
     def _wind_level(self, prod, date_str, run, fhr, region, run_dt, status_cb,
                     with_rh=False, with_temp=False,
-                    with_omega=False, with_rh_from_dpt=False):
+                    with_omega=False, with_rh_from_dpt=False, div_fill=False):
         f = self.proc.find_or_fetch(date_str, run, fhr, 'mean', status_cb)
         lvl = prod['level']
         status_cb(f"Reading {lvl}mb wind/heights...")
@@ -3541,7 +3583,7 @@ class PlotJob:
         if with_omega:
             dzdt,_,_ = self.proc.load_var(f, 'dzdt_lvl', level=lvl)
         return self.pm.wind_level(u, v, gh, lats, lons, prod, region, run_dt,
-                                  fhr, t=t, rh=rh, dzdt=dzdt)
+                                  fhr, t=t, rh=rh, dzdt=dzdt, div_fill=div_fill)
 
     def _vort_level(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         f = self.proc.find_or_fetch(date_str, run, fhr, 'mean', status_cb)

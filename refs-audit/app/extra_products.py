@@ -105,10 +105,11 @@ def register() -> None:
         overlay=[dict(
             ftype="mean", var="vwsh_06km",
             style="contour",
-            levels=[15.4, 20.6, 25.7],   # m/s ≈ 30 / 40 / 50 kt
-            smooth=1.2,
-            colors="#0a0a0a",
-            linewidths=[1.0, 1.5, 2.2],
+            levels=[30, 40, 50],         # kt (field converted from m/s below)
+            convert=lambda x: x * 1.94384,
+            smooth=7.0,                  # 3km shear field is noisy; smooth hard
+            colors="#000000",           # remapped to the theme's readable color
+            linewidths=[1.0, 1.4, 1.9],
         )],
         spc_title=("Mixed-layer (90-0 mb) CAPE (J/kg; shaded) with 0-6 km "
                    "bulk shear contours at 30 / 40 / 50 kt — supercell "
@@ -124,9 +125,9 @@ def register() -> None:
             ftype="mean", var="srh_3km",
             style="contour",
             levels=[100, 200, 400],     # m^2/s^2
-            smooth=1.2,
+            smooth=7.0,                 # 3km SRH field is noisy; smooth hard
             colors="#8a1d8a",
-            linewidths=[1.0, 1.6, 2.4],
+            linewidths=[1.0, 1.5, 2.1],
         )],
         spc_title=("Surface CAPE (J/kg; shaded) with 0-3 km SRH contours at "
                    "100 / 200 / 400 m^2/s^2 — supercell/tornado-favorable areas"),
@@ -140,10 +141,11 @@ def register() -> None:
         overlay=[dict(
             ftype="mean", var="vwsh_06km",
             style="contour",
-            levels=[15.4, 20.6, 25.7],   # m/s ≈ 30/40/50 kt
-            smooth=1.2,
-            colors="#0a0a0a",
-            linewidths=[1.0, 1.5, 2.2],
+            levels=[30, 40, 50],         # kt (field converted from m/s below)
+            convert=lambda x: x * 1.94384,
+            smooth=7.0,                  # 3km shear field is noisy; smooth hard
+            colors="#000000",           # remapped to the theme's readable color
+            linewidths=[1.0, 1.4, 1.9],
         )],
         spc_title=("Most-unstable (180-0 mb) CAPE (J/kg; shaded) with 0-6 km "
                    "bulk shear at 30 / 40 / 50 kt — elevated/nocturnal "
@@ -161,22 +163,23 @@ def register() -> None:
                 ftype="mean", var="srh_3km",
                 style="contour",
                 levels=[150, 300],
-                smooth=1.2,
+                smooth=7.0,
                 colors="#8a1d8a",          # purple = rotation
-                linewidths=[1.4, 2.2],
+                linewidths=[1.3, 2.0],
             ),
             dict(
                 ftype="mean", var="vwsh_06km",
                 style="contour",
-                levels=[20.6, 25.7],       # 40 / 50 kt
-                smooth=1.2,
-                colors="#0a0a0a",          # black = shear
-                linewidths=[1.4, 2.2],
+                levels=[30, 40, 50],       # kt (field converted from m/s below)
+                convert=lambda x: x * 1.94384,
+                smooth=7.0,
+                colors="#000000",          # remapped to readable contour color
+                linewidths=[1.3, 1.8, 2.0],
             ),
         ],
         spc_title=("Surface CAPE (J/kg; shaded) with 0-3 km SRH (purple, "
                    "150 / 300 m^2/s^2) AND 0-6 km bulk shear (black, "
-                   "40 / 50 kt) — supercell + tornado-favorable areas"),
+                   "30 / 40 / 50 kt) — supercell + tornado-favorable areas"),
     )
 
     # 8) Heavy-rain potential where storms are active: PWAT + REFC contours
@@ -605,6 +608,9 @@ def register() -> None:
             'gh_700': dict(ftype='mean', var='gh_lvl', level=700),
             'gh_500': dict(ftype='mean', var='gh_lvl', level=500),
         },
+        # Labeled contour lines of the lapse rate itself (steep = 7-9 K/km).
+        self_contour=dict(levels=[6, 7, 8, 9], smooth=6.0, colors='#000000',
+                          linewidths=[0.8, 1.2, 1.6, 2.0]),
         spc_title=('700-500 mb lapse rate (K/km, ens mean) — values > 7 '
                    'indicate steep mid-level lapse rates / hail potential'),
     )
@@ -629,21 +635,10 @@ def register() -> None:
 
     P['stdiv_250_mean'] = dict(
         cat='Kinematics',
-        name='250 mb Divergence',
-        recipe='composite', composite_fn='stdiv_250',
-        cmap='div', units='10⁻⁵ s⁻¹',
-        # Native-grid divergence is dominated by 1-2 gridpoint noise; a
-        # gentle Gaussian recovers the coherent synoptic / mesoscale signal
-        # without losing storm-top features. mask_below_abs hides the noisy
-        # near-zero band so basemap shows through.
-        smooth_sigma=3.0,
-        mask_below_abs=1.0,
-        ingredients={
-            'u_250': dict(ftype='mean', var='u_lvl', level=250),
-            'v_250': dict(ftype='mean', var='v_lvl', level=250),
-        },
-        spc_title=('250 mb horizontal divergence (10⁻⁵ s⁻¹; smoothed) — '
-                   'upper-level divergent flow / storm-top exhaust proxy'),
+        name='250 mb Divergence + heights + wind',
+        recipe='div_250', level=250, cmap='div_pos', units='10⁻⁵ s⁻¹',
+        spc_title=('250 mb divergence (10⁻⁵ s⁻¹; divergent flow only, shaded), '
+                   'heights (dam), wind barbs — upper-level ascent forcing'),
     )
 
     # ------------------------------------------------------------------
@@ -677,6 +672,9 @@ def register() -> None:
         name='DCAPE mean',
         recipe='member_mean', member_product='2dfld', n_members=5,
         var='dcape', cmap='dcape', units='J/kg',
+        # Labeled contour lines of DCAPE itself (elevated = 750-1250 J/kg).
+        self_contour=dict(levels=[500, 750, 1000, 1250], smooth=6.0,
+                          colors='#000000', linewidths=[0.8, 1.2, 1.6, 2.0]),
         spc_title=('Downdraft CAPE (400-0 mb, J/kg, ens mean of 5 members) '
                    '— wet-microburst / damaging-wind potential'),
     )
