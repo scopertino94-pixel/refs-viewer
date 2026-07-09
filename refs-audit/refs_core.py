@@ -859,13 +859,13 @@ PRODUCTS = {
         spc_title='Composite reflectivity (dBZ; shaded, PMM), neighborhood prob >40 dBZ (contours)'),
 
     'refd_pmmn': dict(
-        cat='Reflectivity (PMM Series)', name='1km AGL Refl. PMM',
+        cat='Reflectivity (PMM Series)', name='1 km AGL Refl. PMM',
         ftype='pmmn', var='refd_1km', cmap='refc', units='dBZ',
         overlay=[_ov_prob('refd_1km', 40)],
         spc_title='1 km AGL reflectivity (dBZ; shaded, PMM), prob >40 dBZ (contours)'),
 
     'maxref_pmmn': dict(
-        cat='Reflectivity (PMM Series)', name='Hourly Max 1km Refl. PMM',
+        cat='Reflectivity (PMM Series)', name='Hourly Max 1 km Refl. PMM',
         ftype='pmmn', var='maxref_1km', cmap='refc', units='dBZ',
         overlay=[_ov_prob('maxref_1km', 40)],
         spc_title='Hourly maximum 1 km reflectivity (dBZ; shaded, PMM), prob >40 dBZ (contours)'),
@@ -875,18 +875,18 @@ PRODUCTS = {
 
     # ---- Updraft helicity --------------------------------------------------
     'uh25_pmmn': dict(
-        cat='Updraft Helicity (2-5 km)', name='UH 2-5km PMM + prob >75',
+        cat='Updraft Helicity (2-5 km)', name='UH 2-5 km PMM + prob >75',
         ftype='pmmn', var='mxuphl_25', cmap='uh', units='m^2/s^2',
         overlay=[_ov_prob('mxuphl_25', 75)],
         spc_title='2-5 km UH (m^2/s^2; shaded, PMM), neighborhood prob >75 (contours)'),
 
-    'uh25_prob25':  dict(cat='Updraft Helicity (2-5 km)', name='Prob UH 2-5km > 25',
+    'uh25_prob25':  dict(cat='Updraft Helicity (2-5 km)', name='Prob UH 2-5 km > 25',
         ftype='prob', var='mxuphl_25', thresh=25, cmap='prob', units='%',
         spc_title='Neighborhood probability of 2-5 km UH > 25 m^2/s^2'),
-    'uh25_prob75':  dict(cat='Updraft Helicity (2-5 km)', name='Prob UH 2-5km > 75',
+    'uh25_prob75':  dict(cat='Updraft Helicity (2-5 km)', name='Prob UH 2-5 km > 75',
         ftype='prob', var='mxuphl_25', thresh=75, cmap='prob', units='%',
         spc_title='Neighborhood probability of 2-5 km UH > 75 m^2/s^2'),
-    'uh25_prob150': dict(cat='Updraft Helicity (2-5 km)', name='Prob UH 2-5km > 150',
+    'uh25_prob150': dict(cat='Updraft Helicity (2-5 km)', name='Prob UH 2-5 km > 150',
         ftype='prob', var='mxuphl_25', thresh=150, cmap='prob', units='%',
         spc_title='Neighborhood probability of 2-5 km UH > 150 m^2/s^2'),
 
@@ -978,7 +978,7 @@ PRODUCTS = {
         spc_title='1-hr QPF (in; PMM), neighborhood prob >0.50 in (contours)'),
 
     'qpf_3h_pmmn_series': dict(
-        cat='QPF (PMM)', name='3-h QPF PMM + prob >1" + >3"',
+        cat='QPF (PMM)', name='3-h QPF PMM + prob >1.00" + >3.00"',
         ftype='pmmn', var='tp_sfc', step_from_fhr=lambda f: _step_for_acc(f,3),
         cmap='qpf', units='in', convert=lambda x: x/25.4,
         # Mirrors the SPC HREF "3-hr QPF (PMM) + NP[QPF>1"] + NP[QPF>3"]" plot:
@@ -1146,7 +1146,7 @@ PRODUCTS = {
 
     # ---- 6-h QPF ensemble mean + prob contour (from mean file) -------------
     'qpf_6h_mean_series': dict(
-        cat='QPF (Mean)', name='6-h QPF mean + prob >1.0"',
+        cat='QPF (Mean)', name='6-h QPF mean + prob >1.00"',
         ftype='mean', var='tp_sfc',
         step_from_fhr=lambda f: f"{f-6}-{f}" if f >= 6 else None,
         min_fhr=6,
@@ -1167,49 +1167,45 @@ PRODUCTS = {
                       levels=[10,30,50,70,90], smooth=2.0,
                       colors='#222222', linewidths=[0.8,1.2,1.6,2.0,2.4])],
         spc_title='Surface CAPE (J/kg; shaded, ens mean), prob ML CAPE >1000 (contours)'),
-    'mlcape_mean':  dict(cat='Thermodynamics', name='ML (90-0mb) CAPE mean',
+    'mlcape_mean':  dict(cat='Thermodynamics', name='ML (90-0 mb) CAPE mean',
         ftype='mean', var='cape_ml', cmap='cape', units='J/kg',
         spc_title='Mixed-layer (90-0 mb) CAPE (J/kg), ensemble mean'),
-    'mucape_mean':  dict(cat='Thermodynamics', name='MU (180-0mb) CAPE mean',
+    'mucape_mean':  dict(cat='Thermodynamics', name='MU (180-0 mb) CAPE mean',
         ftype='mean', var='cape_mu', cmap='cape', units='J/kg',
         spc_title='Most unstable (180-0 mb) CAPE (J/kg), ensemble mean'),
     'sbcin_mean':   dict(cat='Thermodynamics', name='SBCIN mean',
         ftype='mean', var='cin_sfc', cmap='cin', units='J/kg',
         spc_title='Surface CIN (J/kg), ensemble mean'),
-    'mlcin_mean':   dict(cat='Thermodynamics', name='ML (90-0mb) CIN mean',
+    'mlcin_mean':   dict(cat='Thermodynamics', name='ML (90-0 mb) CIN mean',
         ftype='mean', var='cin_ml', cmap='cin', units='J/kg',
         spc_title='Mixed-layer (90-0 mb) CIN (J/kg), ensemble mean'),
-    'pwat_mean':    dict(cat='Thermodynamics', name='PWAT mean (in)',
-        ftype='mean', var='pwat', cmap='pwat_in', units='in',
-        convert=lambda x: x/25.4,
-        spc_title='Precipitable water (in), ensemble mean'),
-    'srh_03km_mean': dict(cat='Thermodynamics', name='0-3km SRH mean',
+    'srh_03km_mean': dict(cat='Thermodynamics', name='0-3 km SRH mean',
         ftype='mean', var='srh_3km', cmap='srh', units='m^2/s^2',
         spc_title='0-3 km storm-relative helicity (m^2/s^2), ensemble mean'),
 
     # ---- Kinematics --------------------------------------------------------
-    'wind_250_mean': dict(cat='Kinematics', name='250mb wind + heights + divergence',
+    'wind_250_mean': dict(cat='Kinematics', name='250 mb wind + heights + divergence',
         recipe='wind_level', level=250, cmap='wind250',
         spc_title='250 mb wind speed (kt; shaded), heights (dam), divergence contours (×10⁻⁵ s⁻¹), ensemble mean'),
-    'wind_500_mean': dict(cat='Kinematics', name='500mb wind + heights',
+    'wind_500_mean': dict(cat='Kinematics', name='500 mb wind + heights',
         recipe='wind_level', level=500, cmap='wind500',
         spc_title='500 mb wind speed (kt; shaded) and heights (dam), ensemble mean'),
-    'vort_500_mean': dict(cat='Kinematics', name='500mb abs vorticity + heights',
+    'vort_500_mean': dict(cat='Kinematics', name='500 mb abs vorticity + heights',
         recipe='vort_level', level=500, cmap='vort',
         spc_title='500 mb absolute vorticity (×10⁻⁵ s⁻¹; shaded), heights (dam), wind barbs, ensemble mean'),
-    'wind_700_mean': dict(cat='Kinematics', name='700mb wind + RH + heights + omega',
+    'wind_700_mean': dict(cat='Kinematics', name='700 mb wind + RH + heights + omega',
         recipe='wind_700_rh', level=700, cmap='wind500',
         spc_title='700 mb wind (kt), heights (dam), RH >70% (green shading), vertical motion contours'),
-    'wind_850_mean': dict(cat='Kinematics', name='850mb wind + RH + temp + heights',
+    'wind_850_mean': dict(cat='Kinematics', name='850 mb wind + RH + temp + heights',
         recipe='wind_850_temp', level=850, cmap='wind500',
         spc_title='850 mb wind (kt), heights (dam), temperature (°C, contours), RH >80% (green shading)'),
-    'wind_925_mean': dict(cat='Kinematics', name='925mb wind + RH + temp + heights',
+    'wind_925_mean': dict(cat='Kinematics', name='925 mb wind + RH + temp + heights',
         recipe='wind_850_temp', level=925, cmap='wind500',
         spc_title='925 mb wind (kt), heights (dam), temperature (°C, contours), RH >80% (green shading)'),
-    'wind_10m_mean': dict(cat='Kinematics', name='10m wind mean',
+    'wind_10m_mean': dict(cat='Kinematics', name='10-m wind mean',
         recipe='wind_10m', cmap='wind500',
         spc_title='10 m wind (kt), ensemble mean'),
-    'shear_06km_mean': dict(cat='Kinematics', name='0-6 km bulk shear mean (kt)',
+    'shear_06km_mean': dict(cat='Kinematics', name='0-6 km bulk shear mean',
         ftype='mean', var='vwsh_06km', cmap='wind500', units='kt',
         convert=lambda x: x*1.94384,
         spc_title='0-6 km bulk wind shear (kt), ensemble mean -- supercell discriminator'),
@@ -1220,16 +1216,8 @@ PRODUCTS = {
     'ptype_mslp_mean': dict(cat='Surface', name='Precip type + MSLP',
         recipe='ptype_mslp', cmap=None,
         spc_title='Ensemble-mean precipitation type (rain/snow/FZRA/IP) and MSLP (hPa)'),
-    't2m_mean':  dict(cat='Surface', name='2-m temperature mean (degF)',
-        ftype='mean', var='t_2m', cmap='t2m', units='degF',
-        convert=lambda x: (x-273.15)*9/5+32,
-        spc_title='2-m temperature (degF), ensemble mean'),
-    'td2m_mean': dict(cat='Surface', name='2-m dewpoint mean (degF)',
-        ftype='mean', var='d_2m', cmap='td2m', units='degF',
-        convert=lambda x: (x-273.15)*9/5+32,
-        spc_title='2-m dewpoint (degF), ensemble mean'),
     'heat_index': dict(cat='Surface',
-        name='Heat index (apparent T, degF)',
+        name='Heat index',
         recipe='heat_index', cmap='t2m', units='degF',
         spc_title='Heat index (degF) -- NWS Rothfusz formula from T2m and Td2m'),
     # snow_24h_pmmn removed: PMMN files don't carry ASNOW at all.
@@ -1248,18 +1236,8 @@ PRODUCTS = {
         ftype='prob', var='ltng', thresh=0.08, cmap='prob', units='%',
         spc_title='Neighborhood probability of lightning > 0.08 fl/km^2/min'),
 
-    # 0-6 km bulk shear -- supercell threshold tiers
-    'shear_06km_prob_30kt': dict(cat='Severe Probabilities',
-        name='Prob 0-6 km Shear > 30 kt',
-        ftype='prob', var='vwsh_06km', thresh=15.4,
-        cmap='prob', units='%',
-        spc_title='Neighborhood probability of 0-6 km bulk shear > 30 kt'),
-    'shear_06km_prob_40kt': dict(cat='Severe Probabilities',
-        name='Prob 0-6 km Shear > 40 kt (supercell)',
-        ftype='prob', var='vwsh_06km', thresh=20.6,
-        cmap='prob', units='%',
-        spc_title='Neighborhood probability of 0-6 km bulk shear > 40 kt -- supercell threshold'),
-    # (shear_06km_prob_50kt removed 2026-06-11 per user — 30/40 kt tiers kept.)
+    # (0-6 km bulk-shear prob tiers removed 2026-07-09 per user — the shear
+    #  environment is better read from the CAPE+shear composites.)
 
     # Max updraft velocity (100-1000 mb) -- convective vigor
     'maxuvv_prob_10': dict(cat='Severe Probabilities',
@@ -1268,7 +1246,7 @@ PRODUCTS = {
         cmap='prob', units='%',
         spc_title='Neighborhood probability of max upward vertical velocity (100-1000 mb) > 10 m/s'),
     'maxuvv_prob_20': dict(cat='Severe Probabilities',
-        name='Prob Max Updraft > 20 m/s (vigorous)',
+        name='Prob Max Updraft > 20 m/s',
         ftype='prob', var='maxuvv_lyr', thresh=20,
         cmap='prob', units='%',
         spc_title='Neighborhood probability of max upward vertical velocity > 20 m/s -- vigorous convection'),
@@ -1293,32 +1271,27 @@ PRODUCTS = {
     'mlcape_prob_3000': dict(cat='Severe Probabilities', name='Prob ML CAPE > 3000',
         ftype='prob', var='cape_ml', thresh=3000, cmap='prob', units='%',
         spc_title='Neighborhood probability of 90-0 mb CAPE > 3000 J/kg'),
-    'mlcin_prob_100':   dict(cat='Severe Probabilities', name='Prob ML CIN < -100',
-        ftype='prob', var='cin_ml',  thresh=-100, cmap='prob', units='%',
-        prob_below=True,
-        spc_title='Neighborhood probability of 90-0 mb CIN < -100 J/kg'),
-
     # ---- SRH probabilities (Severe -> Shear/threshold probs) ---------------
-    'srh_03km_prob_100': dict(cat='Severe Probabilities', name='Prob 0-3km SRH > 100',
+    'srh_03km_prob_100': dict(cat='Severe Probabilities', name='Prob 0-3 km SRH > 100',
         ftype='prob', var='srh_3km', thresh=100, cmap='prob', units='%',
         spc_title='Neighborhood probability of 0-3 km SRH > 100 m^2/s^2'),
-    'srh_03km_prob_200': dict(cat='Severe Probabilities', name='Prob 0-3km SRH > 200',
+    'srh_03km_prob_200': dict(cat='Severe Probabilities', name='Prob 0-3 km SRH > 200',
         ftype='prob', var='srh_3km', thresh=200, cmap='prob', units='%',
         spc_title='Neighborhood probability of 0-3 km SRH > 200 m^2/s^2'),
-    'srh_03km_prob_400': dict(cat='Severe Probabilities', name='Prob 0-3km SRH > 400',
+    'srh_03km_prob_400': dict(cat='Severe Probabilities', name='Prob 0-3 km SRH > 400',
         ftype='prob', var='srh_3km', thresh=400, cmap='prob', units='%',
         spc_title='Neighborhood probability of 0-3 km SRH > 400 m^2/s^2'),
 
     # ---- Synoptic -> Surface composites (T or Td + MSLP + 10 m barbs) ------
     't2m_combo': dict(
         cat='Synoptic / Surface',
-        name='2-m Temperature + MSLP + 10m wind',
+        name='2-m Temperature + MSLP + 10-m wind',
         recipe='combo_sfc', var='t_2m', cmap='t2m', units='degF',
         convert=lambda x: (x-273.15)*9/5+32,
         spc_title='2-m temperature (degF), MSLP (hPa), 10-m wind (kt), ensemble mean'),
     'td2m_combo': dict(
         cat='Synoptic / Surface',
-        name='2-m Dewpoint + MSLP + 10m wind',
+        name='2-m Dewpoint + MSLP + 10-m wind',
         recipe='combo_sfc', var='d_2m', cmap='td2m', units='degF',
         convert=lambda x: (x-273.15)*9/5+32,
         spc_title='2-m dewpoint (degF), MSLP (hPa), 10-m wind (kt), ensemble mean'),
@@ -1398,12 +1371,12 @@ PRODUCTS = {
     # products; REFS member records are 1-h, so take the max of the 4 hourly
     # records ending at the frame hour to match.
     'paintball_uh_75': dict(cat='Member Plots (RRFS_A)',
-        name='Paintball: 4-hr max UH 2-5km >75 m^2/s^2',
+        name='Paintball: 4-hr max UH 2-5 km >75 m^2/s^2',
         recipe='paintball', member_product='2dfld',
         var='mxuphl_25', thresh=75, window_h=4,
         spc_title='4-hr max 2-5 km UH > 75 m^2/s^2, ensemble paintball'),
     'paintball_uh_150': dict(cat='Member Plots (RRFS_A)',
-        name='Paintball: 4-hr max UH 2-5km >150 m^2/s^2',
+        name='Paintball: 4-hr max UH 2-5 km >150 m^2/s^2',
         recipe='paintball', member_product='2dfld',
         var='mxuphl_25', thresh=150, window_h=4,
         spc_title='4-hr max 2-5 km UH > 150 m^2/s^2, ensemble paintball'),
@@ -1422,18 +1395,18 @@ PRODUCTS = {
 
     # ---- New 2dfld stamps: tornado layer / hail / gust -------------------
     'stamps_uh03': dict(cat='Member Plots (RRFS_A)',
-        name='Stamps: UH 0-3 km (tornado layer)',
+        name='Stamps: UH 0-3 km',
         recipe='stamps', member_product='2dfld',
         var='mxuphl_03', cmap='uh', units='m^2/s^2',
         spc_title='0-3 km updraft helicity (m^2/s^2) -- low-level rotation / tornado layer'),
     'stamps_hail': dict(cat='Member Plots (RRFS_A)',
-        name='Stamps: Hail Size (in)',
+        name='Stamps: Hail Size',
         recipe='stamps', member_product='2dfld',
         var='hail', cmap='hail', units='in',
         convert=lambda x: x * 39.37,    # m -> in
         spc_title='Forecast max hail size per member (in)'),
     'stamps_gust': dict(cat='Member Plots (RRFS_A)',
-        name='Stamps: Surface Wind Gust (kt)',
+        name='Stamps: Surface Wind Gust',
         recipe='stamps', member_product='2dfld',
         var='gust', cmap='gust', units='kt',
         convert=lambda x: x * 1.94384,
@@ -1444,12 +1417,12 @@ PRODUCTS = {
 
     # ---- New paintball products on 2dfld ---------------------------------
     'paintball_uh03_75': dict(cat='Member Plots (RRFS_A)',
-        name='Paintball: 4-hr max UH 0-3km > 75 (tornado layer)',
+        name='Paintball: 4-hr max UH 0-3 km > 75',
         recipe='paintball', member_product='2dfld',
         var='mxuphl_03', thresh=75, window_h=4,
         spc_title='4-hr max 0-3 km UH > 75 m^2/s^2 -- low-level rotation paintball'),
     'paintball_hail_1in': dict(cat='Member Plots (RRFS_A)',
-        name='Paintball: 4-hr max Hail > 1 inch (severe)',
+        name='Paintball: 4-hr max Hail > 1 inch',
         recipe='paintball', member_product='2dfld',
         var='hail', thresh=0.0254, window_h=4,        # m (1 in)
         spc_title='4-hr max forecast hail size > 1 in -- severe-hail paintball'),
@@ -1481,17 +1454,11 @@ PRODUCTS = {
         cmap='prob', units='%',
         spc_title='Member-derived probability of surface gust > 50 mph'),
     'gust_prob_60mph': dict(cat='Severe Probabilities',
-        name='Member Prob Gust > 60 mph (severe)',
+        name='Member Prob Gust > 60 mph',
         recipe='member_prob', member_product='2dfld', n_members=5,
         var='gust', thresh=26.82,         # m/s (60 mph) -- NWS severe gust
         cmap='prob', units='%',
         spc_title='Member-derived probability of surface gust > 60 mph -- NWS severe-gust tier'),
-    'gust_prob_75mph': dict(cat='Severe Probabilities',
-        name='Member Prob Gust > 75 mph (sig severe)',
-        recipe='member_prob', member_product='2dfld', n_members=5,
-        var='gust', thresh=33.53,         # m/s (75 mph)
-        cmap='prob', units='%',
-        spc_title='Member-derived probability of surface gust > 75 mph -- significant severe'),
 }
 
 REGIONS = {

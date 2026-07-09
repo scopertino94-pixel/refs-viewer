@@ -1616,7 +1616,7 @@ _DEFAULT_RENDER_PRODUCTS = (
     "refc_pmmn_series", "uh25_pmmn",
     "qpf_6h_lpmm_series",
     "sbcape_mean_series", "srh_03km_mean",
-    "t2m_mean", "pwat_mean",
+    "t2m_combo", "pwat_refc_combo",
     # Operationally critical severe-wind combo (paintball + joint NHP).
     # Member records are byte-range fetched, so this is cheap to warm.
     "paintball_wind10_30kt_nhp",
@@ -1640,10 +1640,10 @@ _DEFAULT_FETCH_PRODUCTS = (
     # Pre-render staples (Phase 2 renders these; fetch must cover them).
     "refc_pmmn_series", "uh25_pmmn",
     "qpf_6h_lpmm_series", "qpf_3h_pmmn_series",
-    "sbcape_mean_series", "srh_03km_mean", "t2m_mean", "pwat_mean",
+    "sbcape_mean_series", "srh_03km_mean", "t2m_combo", "pwat_refc_combo",
     # Other frequently-opened products across the tabs.
     "qpf_1h_prob_001", "qpf_1h_prob_100",
-    "refd_pmmn", "wind_10m_mean", "td2m_mean",
+    "refd_pmmn", "wind_10m_mean", "td2m_combo",
     "paintball_wind10_30kt_nhp",
     "wind10_prob_30kt_4h",
 )
