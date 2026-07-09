@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>REFS Ensemble Viewer</title>
+  <meta name="description" content="SPC HREF-style viewer for NOAA's Rapid Ensemble Forecast System (REFS).">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!-- ============================================================
+       Top control bar (Date / Run / Sector + Title)
+       Matches SPC HREF layout: small selectors on the left, brand on right.
+       ============================================================ -->
+  <header id="topbar">
+    <div class="controls-left">
+      <label>Date <input type="date" id="date"></label>
+      <label>Run
+        <select id="run">
+          <option value="00">00 UTC</option>
+          <option value="06">06 UTC</option>
+          <option value="12">12 UTC</option>
+          <option value="18">18 UTC</option>
+        </select>
+      </label>
+      <button id="btn-run-prev" class="run-step" title="Previous run (Shift+&lt;)">«</button>
+      <button id="btn-run-next" class="run-step" title="Next run (Shift+&gt;)">»</button>
+      <label>Sector
+        <span class="sector-group">
+          <span class="cs-wrap" id="sector-wrap">
+            <button type="button" id="sector-btn" class="cs-trigger" aria-haspopup="listbox" aria-expanded="false">
+              <span id="sector-label">CONUS</span><span class="cs-caret">▾</span>
+            </button>
+            <div id="sector-menu" class="cs-menu hidden" role="listbox"></div>
+          </span>
+          <!-- hidden native select kept for API / event compatibility -->
+          <select id="sector" style="position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;" tabindex="-1" aria-hidden="true"></select>
+          <button id="btn-edit-sector" type="button" title="Edit current custom sector" disabled>✎</button>
+          <button id="btn-draw-sector" type="button" title="Draw a new sector on the map">▭</button>
+        </span>
+      </label>
+      <label>Step
+        <select id="step">
+          <option value="1">1 h</option>
+          <option value="3" selected>3 h</option>
+          <option value="6">6 h</option>
+        </select>
+      </label>
+      <button id="btn-latest" title="Jump to most recent published run">⟲ Latest</button>
+      <label class="model-label">Model
+        <select id="model-select" title="Switch between REFS and HREF to compare the two models">
+          <option value="refs">REFS</option>
+          <option value="href">HREF v3</option>
+        </select>
+      </label>
+      <button id="btn-compare" type="button" title="Toggle REFS vs HREF side-by-side compare (c)" class="compare-btn">⇔ Compare</button>
+      <button id="btn-compare-style" class="compare-style-btn hidden" title="Toggle swipe / split layout">⇸ Swipe</button>
+    </div>
+    <div class="brand-pill">REFS / HREF Viewer</div>
+    <div class="controls-right">
+      <span id="cycle-status-pill" class="pill"></span>
+      <span id="preload-pill" class="pill" style="display:none"></span>
+      <span id="compare-preload-pill" class="pill" style="display:none"></span>
+      <span id="mrms-pill" class="pill mrms-pill" style="display:none">MRMS…</span>
+      <div class="dropdown" id="export-dd">
+        <button id="btn-export" type="button">Export ▾</button>
+        <div class="dropdown-menu hidden" id="export-menu">
+          <button class="menu-action" id="btn-export-png">⬇  Current frame (PNG)</button>
+          <button class="menu-action" id="btn-export-gif">🎞  Animation (GIF)</button>
+        </div>
+      </div>
+      <button id="btn-share" title="Copy a shareable link to this view">🔗</button>
+      <button id="btn-theme" title="Toggle light / dark">☾</button>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       Tab strip (SPC Guidance / Synoptic / Severe / ...)
+       ============================================================ -->
+  <nav id="tabs"></nav>
+
+  <!-- ============================================================
+       Forecast-hour timeline strip
+       ============================================================ -->
+  <div id="timeline">
+    <div class="tl-row tl-days"  id="tl-days"></div>
+    <div class="tl-row tl-hours" id="tl-hours">
+      <div id="tl-playhead"></div>
+      <div id="tl-range-shade-left"></div>
+      <div id="tl-range-shade-right"></div>
+      <div id="tl-range-handle-min" class="tl-range-handle" title="Drag: set loop start"></div>
+      <div id="tl-range-handle-max" class="tl-range-handle" title="Drag: set loop end"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       Map column + Right rail
+       ============================================================ -->
+  <main id="viewer">
+    <div id="map-wrap" class="map-wrap-single">
+      <div id="meta-strip">
+        <div class="meta-controls">
+          <button id="btn-prev" title="Previous frame (←)">◀</button>
+          <button id="btn-play" title="Play / pause (space)">▶</button>
+          <button id="btn-next" title="Next frame (→)">▶|</button>
+          <span class="tl-loop-info" id="tl-loop-info"></span>
+          <button id="btn-loop-reset" title="Reset loop range to full">⟲ loop</button>
+          <span class="tl-speed">SPEED
+            <button id="btn-slower" title="Slower">−</button>
+            <span id="speed-label">3</span>
+            <button id="btn-faster" title="Faster">+</button>
+          </span>
+        </div>
+        <div id="meta-info"></div>
+      </div>
+      <div id="frame-stack">
+        <img id="frame" alt="" draggable="false">
+        <img id="frame-swipe" alt="" draggable="false" aria-hidden="true">
+        <div id="swipe-handle">
+          <div class="swipe-knob">⇔</div>
+        </div>
+        <img id="mrms-overlay" alt="" draggable="false" aria-hidden="true">
+        <img id="refs-contour-overlay" alt="" draggable="false" aria-hidden="true">
+        <img id="paintball-overlay" alt="" draggable="false" aria-hidden="true">
+        <img id="lsr-overlay" alt="" draggable="false" aria-hidden="true">
+        <img id="flood-lsr-overlay" alt="" draggable="false" aria-hidden="true">
+        <!-- WxWorks region boundaries are baked into the tile (zorder 10) so
+             no separate overlay element is needed. -->
+        <div id="swipe-label-left" class="swipe-label swipe-label-left hidden">REFS</div>
+        <div id="swipe-label-right" class="swipe-label swipe-label-right hidden">HREF v3</div>
+        <div id="mrms-caption" class="mrms-caption hidden"></div>
+        <div id="mrms-legend" class="mrms-legend hidden">
+          <div class="mrms-legend-row" id="mrms-legend-contours">
+            <span class="mrms-dash mrms-dash-25"></span><span>25</span>
+            <span class="mrms-dash mrms-dash-40"></span><span>40</span>
+            <span class="mrms-dash mrms-dash-55"></span><span>55 dBZ</span>
+          </div>
+          <div class="mrms-legend-row" id="mrms-legend-colorbar">
+            <span class="mrms-cb-title">MRMS dBZ</span>
+            <span class="mrms-cb-stack">
+              <span class="mrms-cb-bar" aria-hidden="true"></span>
+              <span class="mrms-cb-ticks">
+                <span>5</span><span>20</span><span>35</span><span>50</span><span>65</span><span>75</span>
+              </span>
+            </span>
+          </div>
+        </div>
+        <div id="lsr-legend" class="lsr-legend hidden">
+          <span class="lsr-dot lsr-tor"></span>Tornado
+          <span class="lsr-dot lsr-hail"></span>Hail
+          <span class="lsr-dot lsr-wind"></span>Wind
+        </div>
+        <div id="flood-lsr-legend" class="lsr-legend lsr-legend-flood hidden">
+          <span class="lsr-dot lsr-flood"></span>Flood / Flash Flood
+        </div>
+        <div id="refs-contour-legend" class="refs-contour-legend hidden">
+          <span>REFS forecast (dashed):</span>
+          <span class="refs-dash refs-dash-20"></span><span>20</span>
+          <span class="refs-dash refs-dash-35"></span><span>35</span>
+          <span class="refs-dash refs-dash-50"></span><span>50 dBZ</span>
+        </div>
+        <div id="paintball-legend" class="paintball-legend hidden">
+          <span>Paintball:</span>
+          <span class="pb-swatch" style="background:#1f77b4"></span><span>m1</span>
+          <span class="pb-swatch" style="background:#ff7f0e"></span><span>m2</span>
+          <span class="pb-swatch" style="background:#2ca02c"></span><span>m3</span>
+          <span class="pb-swatch" style="background:#d62728"></span><span>m4</span>
+          <span class="pb-swatch" style="background:#9467bd"></span><span>m5</span>
+        </div>
+        <div id="frame-loading" class="hidden">
+          <div class="fl-body">
+            <div class="fl-row"><span>Rendering frame…</span><span class="fl-pct">0%</span></div>
+            <div class="fl-track"><div class="fl-fill"></div></div>
+          </div>
+        </div>
+        <div id="frame-error" class="hidden"></div>
+        <div id="draw-instructions" class="draw-instructions hidden">
+          Click and drag to define a sector.<br>
+          <span class="kbd">Esc</span> to cancel.
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Compare panel: shown in side-by-side mode, always shows HREF ── -->
+    <div id="compare-panel" class="hidden">
+      <div class="compare-label-bar">
+        <div class="compare-panel-labels">
+          <span id="compare-left-chip" class="model-chip model-chip-refs">REFS</span>
+          <select id="compare-type" title="What to show in the right panel">
+            <option value="href">vs HREF v3</option>
+            <option value="run_prev">vs Prior Run</option>
+          </select>
+          <span id="compare-right-chip" class="model-chip model-chip-href">HREF v3</span>
+        </div>
+      </div>
+      <div id="frame-stack-b">
+        <img id="frame-b" alt="" draggable="false">
+        <div id="frame-loading-b" class="hidden">
+          <div class="fl-body">
+            <div class="fl-row"><span>Rendering frame…</span><span class="fl-pct">0%</span></div>
+            <div class="fl-track"><div class="fl-fill"></div></div>
+          </div>
+        </div>
+        <div id="frame-error-b" class="hidden"></div>
+      </div>
+    </div>
+
+    <button id="rail-toggle" type="button" title="Hide / show right rail (\\)">‹</button>
+
+    <aside id="right-rail">
+      <div class="rail-section">
+        <div class="rail-header">Product</div>
+        <div class="rail-search">
+          <input id="prod-search" placeholder="Search products…" autocomplete="off">
+        </div>
+        <div id="product-list"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-header">Other Overlays</div>
+        <div class="rail-body">
+          <label class="row"><span>Palette</span>
+            <select id="palette"></select>
+          </label>
+          <label class="row" title="How to overlay observed MRMS reflectivity on the REFS forecast. Off hides it; Contours shows 25/40/55 dBZ lines; Filled shows the full NWS palette translucent over REFS; MRMS Only desaturates REFS to a basemap ghost so you can verify against the full observation.">
+            <span>MRMS overlay</span>
+            <select id="mrms-mode">
+              <option value="off" selected>Off</option>
+              <option value="contours">Contours (25/40/55 dBZ)</option>
+              <option value="filled">Filled (translucent)</option>
+              <option value="only">MRMS only (swap)</option>
+              <option value="compare">Compare (side-by-side)</option>
+            </select>
+          </label>
+          <label class="row" title="Which MRMS reflectivity product to compare against. Composite = column-max dBZ (matches REFS composite-reflectivity products). Hybrid-Scan = SeamlessHSR. Base = lowest-tilt reflectivity.">
+            <span>MRMS product</span>
+            <select id="mrms-product">
+              <option value="refc" selected>QC Composite</option>
+              <option value="hsr">SeamlessHSR</option>
+              <option value="base">QC Base Refl.</option>
+            </select>
+          </label>
+          <label class="row toggle-row" title="Overlay observed storm reports (tornado/hail/wind) from IEM at the forecast valid time">
+            <input id="toggle-lsrs" type="checkbox">
+            <span>Show storm reports (LSRs)</span>
+          </label>
+          <label class="row toggle-row" title="Overlay observed Flood and Flash Flood reports from IEM. Independent of the severe-LSR layer.">
+            <input id="toggle-flood-lsrs" type="checkbox">
+            <span>Show Flood / Flash Flood LSRs</span>
+          </label>
+          <label class="row toggle-row" title="Overlay REFS forecast composite-reflectivity contours (20/35/50 dBZ, dashed) on top of the MRMS panel — direct visual comparison of forecast vs observed storm shape. Useful with MRMS overlay set to Compare.">
+            <input id="toggle-refs-contours" type="checkbox">
+            <span>REFS contours on MRMS</span>
+          </label>
+          <label class="row toggle-row" title="Overlay individual REFS member contours (paintball-style) on the current product. Each member gets a distinct color. REFS only.">
+            <input id="toggle-paintball" type="checkbox">
+            <span>Show paintball overlay</span>
+          </label>
+          <label class="row" id="paintball-var-row">
+            <span>Paintball variable</span>
+            <select id="paintball-var">
+              <option value="refc|40">Comp. Refl. >40 dBZ</option>
+              <option value="refc|50">Comp. Refl. >50 dBZ</option>
+              <option value="mxuphl_25|75">UH 2-5km >75 m²/s²</option>
+              <option value="mxuphl_25|150">UH 2-5km >150 m²/s²</option>
+              <option value="mxuphl_03|75">UH 0-3km >75 m²/s²</option>
+            </select>
+          </label>
+          <label class="row toggle-row" title="Show US county boundaries on the basemap. Off by default for a cleaner AG-WX-style look.">
+            <input id="toggle-counties" type="checkbox">
+            <span>Show counties</span>
+          </label>
+          <label class="row toggle-row" title="Show major US city labels. Density auto-adjusts to your sector (more cities on regional sectors than on CONUS).">
+            <input id="toggle-cities" type="checkbox">
+            <span>Show city labels</span>
+          </label>
+          <label class="row" title="LSR time window around the forecast valid time">
+            <span>LSR window</span>
+            <select id="lsr-window">
+              <option value="15">±15 min</option>
+              <option value="30" selected>±30 min</option>
+              <option value="60">±60 min</option>
+              <option value="120">±2 hr</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-header">Keyboard Shortcuts</div>
+        <div class="rail-body kbd-grid">
+          <kbd>&lt;</kbd><span>prev fcst hour</span>
+          <kbd>&gt;</kbd><span>next fcst hour</span>
+          <kbd>p</kbd><span>play / pause</span>
+          <kbd>l</kbd><span>jump to latest</span>
+          <kbd>m</kbd><span>cycle MRMS overlay mode</span>
+          <kbd>c</kbd><span>toggle REFS vs HREF compare</span>
+          <kbd>t</kbd><span>toggle theme</span>
+          <kbd>\</kbd><span>collapse / expand rail</span>
+        </div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-header">More Information</div>
+        <div class="rail-body src">
+          <p>SPC-HREF-style plots from NOAA's
+            <a href="https://registry.opendata.aws/noaa-rrfs/" target="_blank" rel="noopener">RRFS / REFS</a>
+            public bucket.</p>
+          <p id="footer-version" class="muted"></p>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer id="statusbar">
+    <span id="status">Loading…</span>
+    <span class="src">NOAA REFS · ensemble post (mean / pmmn / lpmm / prob / sprd)</span>
+  </footer>
+
+  <!-- Custom sector modal -->
+  <div id="cs-modal" class="modal hidden">
+    <div class="modal-body">
+      <h3>Custom Sector</h3>
+      <p class="hint">Longitude / latitude bounding box. Saved to this browser.</p>
+      <label>Name <input id="cs-name" placeholder="My Area" maxlength="40"></label>
+      <div class="row2">
+        <label>West lon <input id="cs-lonmin" type="number" step="0.1" placeholder="-95.0"></label>
+        <label>East lon <input id="cs-lonmax" type="number" step="0.1" placeholder="-75.0"></label>
+      </div>
+      <div class="row2">
+        <label>South lat <input id="cs-latmin" type="number" step="0.1" placeholder="32.0"></label>
+        <label>North lat <input id="cs-latmax" type="number" step="0.1" placeholder="42.0"></label>
+      </div>
+      <div id="cs-error" class="error hidden"></div>
+      <div class="modal-buttons">
+        <button id="cs-delete" class="danger hidden">Delete</button>
+        <button id="cs-cancel">Cancel</button>
+        <button id="cs-save" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-visit ALPHA acknowledgement gate -->
+  <div id="alpha-overlay" class="alpha-overlay hidden">
+    <div class="alpha-card">
+      <div class="alpha-badge">ALPHA</div>
+      <h2>REFS / HREF Viewer</h2>
+      <p class="alpha-lead">This tool is in active development. Before you start, please keep in mind:</p>
+      <ul class="alpha-points">
+        <li>Load times may be long, especially on first access.</li>
+        <li>Data availability depends on NOAA's public feeds.</li>
+        <li>Some products or features may be intermittent.</li>
+      </ul>
+      <button id="alpha-accept" class="primary" type="button">I understand — continue</button>
+    </div>
+  </div>
+
+  <!-- Toast container (Share button, status messages) -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Click-to-zoom lightbox -->
+  <div id="zoom-overlay" class="zoom-overlay hidden">
+    <button id="zoom-close" class="zoom-close" type="button" title="Close (Esc)">✕</button>
+    <img id="zoom-img" alt="">
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

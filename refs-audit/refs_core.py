@@ -349,17 +349,6 @@ def _palette_from(mname):
 PALETTES = ('Default',
             'SPC Ramp',
             'High Contrast',
-            'High Contrast Warm',
-            'High Contrast Cool',
-            'Neon Storm',
-            'Twilight Storm',
-            'Modern (Viridis/Turbo)',
-            'Colorblind Safe (Cividis)',
-            'Magma',
-            'Plasma',
-            'Inferno',
-            'Twilight',
-            'Coolwarm',
             'Spectral')
 
 

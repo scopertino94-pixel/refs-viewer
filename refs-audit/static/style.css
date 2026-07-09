@@ -1,0 +1,1493 @@
+/* REFS Viewer -- SPC HREF-styled UI */
+:root {
+  --bg: #0b0e13;
+  --panel: #11161d;
+  --panel-2: #1a2030;
+  --rail: #161c25;
+  --border: #2a313a;
+  --fg: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #3b82f6;
+  --accent-2: #2c3e5a;
+  --header-bar: #2c3e5a;
+  --header-fg: #dde6f5;
+  --tab-bg: rgba(255,255,255,0.07);
+  --tab-bg-active: #b91c1c;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --loaded: #60a5fa;
+  --missing: #4b5563;
+  --topbar-h: 44px;
+  --tabs-h: 36px;
+  --timeline-h: 48px;            /* days row + hours row only */
+  --rail-w: 240px;
+  --rail-w-collapsed: 0px;
+  --statusbar-h: 22px;
+}
+
+:root[data-theme="light"] {
+  --bg: #eef2f7;
+  --panel: #ffffff;
+  --panel-2: #f1f5f9;
+  --rail: #f8fafc;
+  --border: #d1d9e2;
+  --fg: #0f172a;
+  --muted: #475569;
+  --accent: #1d4ed8;
+  --header-bar: #2c3e5a;
+  --header-fg: #ffffff;
+  --tab-bg: rgba(44,62,90,0.14);
+  --tab-bg-active: #b91c1c;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ========================== Top bar ========================== */
+#topbar {
+  position: absolute; top: 0; left: 0; right: 0; height: var(--topbar-h);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 12px; gap: 12px;
+  background: var(--header-bar); color: var(--header-fg);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+.controls-left, .controls-right { display: flex; align-items: center; gap: 10px; }
+.controls-right { justify-content: flex-end; }
+.brand-pill {
+  background: #1f2c44;
+  color: #cfe6ff;
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 4px 14px;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.brand-pill::before {
+  content: '';
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  margin-right: 7px;
+  vertical-align: middle;
+}
+#topbar label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: #cfe6ff;
+}
+#topbar input[type="date"],
+#topbar select {
+  background: rgba(0,0,0,0.25); color: var(--header-fg);
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 3px 6px; border-radius: 3px; font-size: 12px;
+  font-family: inherit;
+}
+#topbar button {
+  background: #1f2c44; color: #cfe6ff;
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 4px 10px; border-radius: 3px; cursor: pointer;
+  font-size: 12px;
+}
+#topbar button:hover { background: #2c3e5a; }
+
+/* Model selector highlight — draws the eye to the active model */
+.model-label { display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: #cfe6ff; }
+#model-select {
+  background: rgba(0,0,0,0.25); color: var(--header-fg);
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 3px 6px; border-radius: 3px; font-size: 12px;
+  font-family: inherit; font-weight: 600;
+}
+#model-select option[value="href"] { color: #b45309; }
+.model-href #model-select { background: #fef3c7; color: #92400e;
+  border-color: #f59e0b; }
+
+/* HREF banner chip shown in the meta strip */
+.model-chip {
+  display: inline-block;
+  padding: 1px 7px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  vertical-align: middle; margin-left: 6px;
+}
+.model-chip-refs { background: #1e3a5f; color: #7fb2ff; }
+.model-chip-href { background: #78350f; color: #fde68a; }
+
+/* ── Compare button (lives in the topbar controls-left strip) ───────────── */
+.compare-btn {
+  background: var(--panel-2); color: var(--fg);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 4px;
+  padding: 3px 10px; font-size: 12px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.compare-btn:hover { border-color: var(--accent); }
+.compare-btn.active {
+  background: #1e3a5f; color: #7fb2ff;
+  border-color: #3b6bbf;
+}
+
+/* ── Side-by-side compare layout ────────────────────────────────────────── */
+/* In compare mode #viewer switches to a 3-column grid:
+   [REFS panel] [HREF panel] [right rail] */
+body.compare-active #viewer {
+  grid-template-columns: 1fr 1fr var(--rail-w);
+}
+body.compare-active #viewer.rail-collapsed {
+  grid-template-columns: 1fr 1fr 0px;
+}
+
+#compare-panel {
+  position: relative;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  min-height: 0; min-width: 0; overflow: hidden;
+}
+#compare-panel.hidden { display: none; }
+
+.compare-label-bar {
+  padding: 4px 10px;
+  background: rgba(120, 60, 0, 0.12);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; gap: 6px;
+  min-height: 30px;
+}
+
+/* Also add a REFS label bar to map-wrap when compare is active */
+body.compare-active #map-wrap::before {
+  content: '';
+  display: none; /* label injected via JS chip */
+}
+
+#frame-stack-b {
+  position: relative;
+  flex: 1; min-height: 0;
+  overflow: hidden;
+}
+#frame-b {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  display: block;
+}
+#frame-loading-b, #frame-error-b {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.65);
+  color: #e2e8f0; border-radius: 8px;
+  padding: 11px 20px; font-size: 13px; font-weight: 600;
+  pointer-events: none;
+  display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+#frame-loading-b::before {
+  content: '';
+  display: inline-block;
+  width: 15px; height: 15px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: #7fb2ff;
+  border-radius: 50%;
+  animation: pill-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+#frame-loading-b.hidden, #frame-error-b.hidden { display: none; }
+
+/* ── Swipe mode ─────────────────────────────────────────────────────────── */
+#frame-swipe {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  opacity: 0;
+}
+body.compare-swipe #frame-swipe { opacity: 1; }
+body.compare-swipe #compare-panel { display: none !important; }
+/* Swipe mode collapses back to single-column */
+body.compare-swipe #viewer { grid-template-columns: 1fr var(--rail-w); }
+body.compare-swipe #viewer.rail-collapsed { grid-template-columns: 1fr 0px; }
+
+/* Clip the two images at the swipe divider.
+   --swipe-pct is set inline by JS on #frame-stack. */
+body.compare-swipe #frame {
+  clip-path: inset(0 calc(100% - var(--swipe-pct, 50%)) 0 0);
+}
+body.compare-swipe #frame-swipe {
+  clip-path: inset(0 0 0 var(--swipe-pct, 50%));
+}
+
+#swipe-handle {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: var(--swipe-pct, 50%);
+  width: 3px;
+  background: rgba(255,255,255,0.9);
+  transform: translateX(-50%);
+  z-index: 25;
+  cursor: ew-resize;
+  display: none;
+  box-shadow: 0 0 6px rgba(0,0,0,0.5);
+}
+body.compare-swipe #swipe-handle { display: block; }
+.swipe-knob {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 34px; height: 34px;
+  background: white; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: #222;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.55);
+  user-select: none;
+}
+.swipe-label {
+  position: absolute; top: 8px;
+  z-index: 24;
+  background: rgba(0,0,0,0.55);
+  color: #fff; font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 3px;
+  pointer-events: none;
+}
+.swipe-label-left  { left:  10px; }
+.swipe-label-right { right: 10px; }
+.swipe-label.hidden { display: none; }
+
+/* Compare panel header controls */
+.compare-panel-labels {
+  display: flex; align-items: center; gap: 8px; flex: 1;
+}
+#compare-type {
+  background: var(--panel-2); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 2px 6px; font-size: 11px; font-family: inherit;
+}
+.compare-style-btn {
+  background: var(--panel-2); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 2px 8px; font-size: 11px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.compare-style-btn:hover { border-color: var(--accent); }
+.compare-style-btn.active { background: #1e3a5f; color: #7fb2ff; border-color: #3b6bbf; }
+
+/* Paintball overlay */
+#paintball-overlay {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  display: block; opacity: 0;
+  transition: opacity 150ms;
+  pointer-events: none;
+  user-select: none;
+  image-rendering: -webkit-optimize-contrast;
+  z-index: 5;
+}
+#paintball-overlay.visible { opacity: 1; }
+#paintball-var-row { display: none; }
+#paintball-var-row.visible { display: flex; }
+.paintball-legend {
+  position: absolute; bottom: 58px; left: 8px;
+  background: rgba(0,0,0,0.6); color: #fff;
+  font-size: 11px; padding: 4px 8px; border-radius: 4px;
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+}
+.paintball-legend.hidden { display: none; }
+.pb-swatch {
+  display: inline-block; width: 14px; height: 3px;
+  border-radius: 2px; vertical-align: middle;
+}
+
+/* ── Status / progress pills ──────────────────────────────────────────── */
+.pill {
+  background: #1f2c44; color: var(--muted);
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+  font-variant-numeric: tabular-nums; min-width: 64px; text-align: center;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+}
+.pill.complete { color: var(--ok);   border-color: rgba(34,197,94,0.5); }
+.pill.partial  { color: var(--warn); border-color: rgba(245,158,11,0.5); }
+
+/* ── LIVE pill — larger + louder ───────────────────────────────────────── */
+.pill.live {
+  color: #fff; background: #b91c1c;
+  border-color: rgba(239,68,68,0.9);
+  font-size: 13px; padding: 4px 12px; letter-spacing: 0.04em;
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+/* Blinking red dot prefix */
+.pill.live::before {
+  content: '●';
+  font-size: 9px; line-height: 1;
+  animation: dot-blink 1.0s step-start infinite;
+  flex-shrink: 0;
+}
+@keyframes dot-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.75); }
+  55%      { box-shadow: 0 0 0 12px rgba(239,68,68,0); }
+}
+
+/* ── Shared spinner keyframe ──────────────────────────────────────────── */
+@keyframes pill-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Circular spinner shown by refs-loading / href-loading / mrms-pill */
+.pill.refs-loading::before,
+.pill.href-loading::before,
+.pill.mrms-pill::before {
+  content: '';
+  display: inline-block;
+  width: 9px; height: 9px;
+  border: 1.5px solid rgba(255,255,255,0.20);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: pill-spin 0.85s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ── REFS tile-preload pill (blue) ─────────────────────────────────────── */
+.pill.refs-loading {
+  color: #93c5fd; background: #1b3560;
+  border-color: rgba(96,165,250,0.55);
+  animation: refs-glow 1.8s ease-in-out infinite;
+}
+@keyframes refs-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(96,165,250,0.45); }
+  55%      { box-shadow: 0 0 0 8px rgba(96,165,250,0); }
+}
+
+/* ── HREF tile-preload pill (amber) ────────────────────────────────────── */
+.pill.href-loading {
+  color: #fde68a; background: #6b3000;
+  border-color: rgba(245,158,11,0.60);
+  animation: href-glow 1.8s ease-in-out infinite;
+}
+@keyframes href-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.50); }
+  55%      { box-shadow: 0 0 0 8px rgba(245,158,11,0); }
+}
+
+/* Sector group + custom-sector edit/draw buttons */
+.sector-group { display: inline-flex; gap: 4px; }
+.sector-group select { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.sector-group button {
+  background: #1f2c44; color: #cfe6ff;
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 3px 8px; border-radius: 3px; font-size: 12px; cursor: pointer;
+  min-width: 28px;
+}
+.sector-group button:hover { background: #2c3e5a; }
+.sector-group button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Custom sector dropdown ── */
+.cs-wrap { position: relative; display: inline-block; }
+.cs-trigger {
+  background: rgba(0,0,0,0.25); color: var(--header-fg);
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 3px 6px; border-radius: 3px 0 0 3px; font-size: 12px;
+  font-family: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  white-space: nowrap; min-width: 120px; justify-content: space-between;
+  line-height: 1.4;
+}
+.cs-trigger:hover { background: rgba(255,255,255,0.10); }
+.cs-trigger[aria-expanded="true"] {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.40);
+}
+.cs-caret { font-size: 10px; opacity: 0.65; flex-shrink: 0; }
+.cs-menu {
+  position: absolute; top: calc(100% + 4px); left: 0;
+  background: #141c2e; border: 1px solid rgba(255,255,255,0.18); border-radius: 5px;
+  padding: 4px 0; z-index: 300; min-width: 190px; max-height: 370px; overflow-y: auto;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.55);
+}
+.cs-menu.hidden { display: none; }
+.cs-group-lbl {
+  padding: 7px 10px 3px; font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+  color: #7fb2ff; text-transform: uppercase; pointer-events: none; user-select: none;
+}
+.cs-sep { border: none; border-top: 1px solid rgba(255,255,255,0.10); margin: 3px 8px; }
+.cs-item {
+  padding: 6px 14px; font-size: 12px; color: #cfe6ff; cursor: pointer;
+  white-space: nowrap; user-select: none;
+}
+.cs-item:hover { background: rgba(255,255,255,0.08); }
+.cs-item.active { background: rgba(100,160,255,0.18); color: #ffffff; font-weight: 600; }
+.cs-item.add-new { color: #7fb2ff; font-style: italic; }
+.cs-item.add-new:hover { background: rgba(100,160,255,0.10); }
+
+/* Export / dropdown menu */
+.dropdown { position: relative; display: inline-block; }
+.dropdown-menu {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 4px; z-index: 100; min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+.dropdown-menu.hidden { display: none; }
+.menu-action {
+  display: block; width: 100%; text-align: left;
+  background: transparent; color: var(--fg); border: 0;
+  padding: 7px 12px; cursor: pointer; font-size: 12px;
+  border-radius: 4px;
+}
+.menu-action:hover { background: var(--panel-2); }
+.menu-action:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Modal */
+.modal {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(2px);
+}
+.modal.hidden { display: none; }
+.modal-body {
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 18px 20px; width: 380px; max-width: 90vw;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+}
+.modal-body h3 { margin: 0 0 6px; font-size: 15px; }
+.modal-body p.hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+.modal-body label { display: block; font-size: 12px; color: var(--muted); margin: 6px 0 2px; }
+.modal-body input {
+  width: 100%; padding: 6px 8px; background: var(--panel-2);
+  border: 1px solid var(--border); color: var(--fg); border-radius: 4px;
+  font-size: 13px; font-family: inherit;
+}
+.modal-body .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.modal-buttons button {
+  background: var(--panel-2); color: var(--fg); border: 1px solid var(--border);
+  padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;
+}
+.modal-buttons button:hover { border-color: var(--accent); }
+.modal-buttons button.primary {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.modal-buttons button.danger {
+  background: transparent; color: #ef4444; border-color: #b91c1c; margin-right: auto;
+}
+.modal-body .error {
+  margin-top: 8px; color: #ef4444; font-size: 12px;
+}
+.modal-body .error.hidden { display: none; }
+
+/* First-visit ALPHA acknowledgement gate */
+.alpha-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.72); backdrop-filter: blur(3px);
+}
+.alpha-overlay.hidden { display: none; }
+.alpha-card {
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 24px 26px; width: 440px; max-width: 90vw;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+  text-align: left;
+}
+.alpha-badge {
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+  color: #fff; background: var(--accent);
+  padding: 3px 9px; border-radius: 4px; margin-bottom: 12px;
+}
+.alpha-card h2 { margin: 0 0 12px; font-size: 20px; }
+.alpha-lead { margin: 0 0 12px; font-size: 13.5px; color: var(--fg); }
+.alpha-points {
+  margin: 0 0 20px; padding-left: 18px; font-size: 13px;
+  color: var(--muted); line-height: 1.7;
+}
+.alpha-card button.primary {
+  width: 100%; background: var(--accent); border: 1px solid var(--accent);
+  color: #fff; padding: 10px 14px; border-radius: 6px; cursor: pointer;
+  font-size: 14px; font-weight: 600; font-family: inherit;
+}
+.alpha-card button.primary:hover { filter: brightness(1.08); }
+
+/* Draw-rectangle overlay (drag on map) */
+.draw-rect {
+  position: fixed; pointer-events: none; z-index: 60;
+  border: 2px dashed #fbbf24;
+  background: rgba(251, 191, 36, 0.18);
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.18);
+}
+.draw-instructions {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: rgba(11, 14, 19, 0.92); color: var(--fg);
+  border: 1px solid var(--accent); border-radius: 8px;
+  padding: 14px 22px; font-size: 14px; line-height: 1.5; text-align: center;
+  pointer-events: none; z-index: 70;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.draw-instructions .kbd {
+  display: inline-block; padding: 0 6px; border: 1px solid var(--border);
+  border-radius: 3px; background: var(--panel-2); font-size: 11px;
+  font-family: ui-monospace, monospace; margin: 0 1px;
+}
+#map-wrap.draw-mode #frame { cursor: crosshair; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 18px; font-size: 13px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  z-index: 300;
+  transition: opacity .2s, transform .2s;
+}
+.toast.hidden { opacity: 0; pointer-events: none; transform: translate(-50%, 8px); }
+
+/* ========================== Tab strip ========================== */
+#tabs {
+  position: absolute; top: var(--topbar-h); left: 0; right: 0;
+  height: var(--tabs-h);
+  display: flex; gap: 3px;
+  padding: 4px 8px 0;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  z-index: 9;
+  overflow-x: auto;
+}
+.tab {
+  background: var(--tab-bg); color: rgba(207,230,255,0.65);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-bottom: none;
+  padding: 6px 18px;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.tab:hover { background: rgba(255,255,255,0.12); }
+.tab.active {
+  background: var(--tab-bg-active);
+  color: #fff;
+  border-color: var(--tab-bg-active);
+}
+:root[data-theme="light"] .tab { color: rgba(15,23,42,0.65); }
+:root[data-theme="light"] .tab:hover { background: rgba(44,62,90,0.22); }
+:root[data-theme="light"] .tab.active { color: #fff; }
+
+/* ========================== Timeline ========================== */
+#timeline {
+  position: absolute; top: calc(var(--topbar-h) + var(--tabs-h));
+  left: 0; right: 0; height: var(--timeline-h);
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  z-index: 8;
+  display: grid; grid-template-rows: 18px 1fr;
+}
+.tl-row { position: relative; }
+
+/* Run-step arrows in the topbar */
+.run-step {
+  background: #1f2c44; color: #cfe6ff;
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 4px 8px; border-radius: 3px; cursor: pointer;
+  font-size: 13px; font-weight: 700;
+}
+.run-step:hover { background: #2c3e5a; }
+.run-step:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Timeline play-head cursor (a thin vertical line tracking state.fhr) */
+#tl-playhead {
+  position: absolute; top: 0; bottom: 0;
+  width: 2px;
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239,68,68,0.7);
+  pointer-events: none;
+  z-index: 4;
+  transition: left 120ms ease-out;
+  display: none;       /* JS shows it once positioned */
+}
+
+/* Loop-range shaded regions (outside the [fmin, fmax] window) */
+#tl-range-shade-left, #tl-range-shade-right {
+  position: absolute; top: 0; bottom: 0;
+  background: rgba(0,0,0,0.45);
+  pointer-events: none;
+  z-index: 2;
+  display: none;
+}
+
+/* Drag handles for loop range */
+.tl-range-handle {
+  position: absolute; top: 0; bottom: 0;
+  width: 9px;
+  background: rgba(251, 191, 36, 0.85);
+  border: 1px solid #b45309;
+  cursor: ew-resize;
+  z-index: 5;
+  display: none;
+}
+.tl-range-handle::after {
+  content: ""; position: absolute; left: 3px; right: 3px;
+  top: 50%; height: 14px; transform: translateY(-50%);
+  border-left: 1px solid #78350f;
+  border-right: 1px solid #78350f;
+}
+.tl-range-handle:hover { background: rgba(251, 191, 36, 1); }
+
+.tl-loop-info {
+  color: var(--muted); font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+.tl-loop-info.active { color: #fbbf24; }
+#btn-loop-reset {
+  font-size: 11px; padding: 2px 6px;
+}
+
+/* Clickable day labels */
+.tl-days .tl-day-mark {
+  cursor: pointer;
+}
+.tl-days .tl-day-mark:hover { text-decoration: underline; color: var(--accent); }
+.tl-days {
+  display: flex; align-items: center;
+  font-size: 11px; color: var(--muted);
+  padding: 0 8px;
+  border-bottom: 1px dashed var(--border);
+}
+.tl-days .tl-day-mark {
+  font-weight: 700; color: var(--fg);
+  padding: 0 4px;
+  position: absolute;
+  bottom: 0;
+}
+.tl-hours {
+  display: flex; align-items: stretch;
+  overflow-x: auto;
+  padding: 0 4px;
+}
+.fhr-cell {
+  flex: 1 0 28px;
+  min-width: 28px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-end;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  padding: 4px 0 6px;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  position: relative;
+}
+.fhr-cell:hover { background: var(--panel-2); color: var(--fg); }
+.fhr-cell.active {
+  background: var(--accent-2); color: #fff;
+  border-color: var(--accent);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+.fhr-cell .dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--missing);
+  margin-top: 3px;
+}
+/* Posted on S3 but not yet rendered+cached client-side → red */
+.fhr-cell.available .dot { background: #ef4444; box-shadow: 0 0 4px rgba(239,68,68,0.75); }
+/* Fully loaded into the client-side image cache → green */
+.fhr-cell.loaded    .dot { background: var(--ok); }
+.fhr-cell.missing { color: #4b5563; cursor: not-allowed; }
+.fhr-cell.missing:hover { background: transparent; }
+/* "Not applicable" — fhr outside this product's valid window (e.g. F00-F23
+   for a 24-h accumulation). Distinct from "missing" (= REFS didn't post yet)
+   so users can tell a render failure from "wrong hour for this product". */
+.fhr-cell.na { color: #374151; opacity: 0.45; cursor: not-allowed; }
+.fhr-cell.na .dot { background: transparent; border: 1px dashed #4b5563; }
+.fhr-cell.na:hover { background: transparent; color: #374151; }
+
+.tl-controls {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  background: var(--panel-2);
+  border-top: 1px solid var(--border);
+}
+.tl-controls button {
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 2px 10px; border-radius: 3px; font-size: 12px; cursor: pointer;
+}
+.tl-controls button:hover { border-color: var(--accent); }
+.tl-speed {
+  margin-left: auto; color: var(--muted); font-size: 11px;
+  display: inline-flex; gap: 6px; align-items: center;
+}
+#speed-label {
+  display: inline-block; min-width: 18px; text-align: center;
+  color: var(--fg); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========================== Viewer (map + right rail) ========================== */
+#viewer {
+  position: absolute;
+  top: calc(var(--topbar-h) + var(--tabs-h) + var(--timeline-h));
+  bottom: var(--statusbar-h);
+  left: 0; right: 0;
+  display: grid; grid-template-columns: 1fr var(--rail-w);
+  overflow: hidden;
+  transition: grid-template-columns 180ms ease;
+}
+/* Collapsed right-rail → bigger map area */
+#viewer.rail-collapsed {
+  grid-template-columns: 1fr 0px;
+}
+#viewer.rail-collapsed #right-rail {
+  overflow: hidden;
+}
+#rail-toggle {
+  position: absolute;
+  top: 50%; right: 0;
+  transform: translate(50%, -50%);
+  z-index: 6;
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 50%;
+  width: 22px; height: 22px;
+  cursor: pointer; padding: 0;
+  font-size: 12px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+}
+#rail-toggle:hover { background: var(--panel-2); border-color: var(--accent); }
+#map-wrap {
+  position: relative;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  /* Critical: flex children with `flex: 1` need an explicit min-height to
+     actually shrink to fit. Without this the rendered PNG can overflow
+     the viewport and the bottom (colorbar + caption) gets clipped. */
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+#meta-strip {
+  padding: 4px 10px;
+  background: rgba(120, 140, 200, 0.06);
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px; line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 30px;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+#meta-strip::-webkit-scrollbar { height: 4px; }
+#meta-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+#meta-strip .label {
+  text-transform: uppercase; opacity: 0.5;
+  font-size: 9.5px; letter-spacing: 0.06em;
+  margin-right: 2px;
+}
+#meta-info { display: inline-flex; align-items: center; gap: 0; flex-wrap: nowrap; }
+#meta-info .val   { font-weight: 600; margin-right: 8px; white-space: nowrap; }
+#meta-info .sep   { opacity: 0.25; margin: 0 4px; flex-shrink: 0; }
+#meta-info .prod  { color: var(--accent); font-weight: 700; display: inline-block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+
+/* Play/loop controls now live inside #meta-strip (left side) */
+.meta-controls {
+  display: inline-flex; align-items: center; gap: 4px;
+  flex-shrink: 0;
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+}
+.meta-controls button {
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 1px 9px; border-radius: 3px;
+  font-size: 12px; cursor: pointer;
+}
+.meta-controls button:hover { border-color: var(--accent); }
+.meta-controls .tl-loop-info {
+  position: static; transform: none;     /* override the absolute legacy */
+  background: transparent; padding: 0;
+  color: var(--muted); font-size: 10.5px;
+}
+.meta-controls .tl-speed {
+  color: var(--muted); font-size: 10.5px;
+  display: inline-flex; gap: 4px; align-items: center;
+  margin-left: 4px;
+}
+.meta-controls #speed-label {
+  min-width: 14px; text-align: center;
+  color: var(--fg); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+#frame-stack {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0; min-width: 0;
+  background: var(--bg);
+  overflow: hidden;
+}
+#frame {
+  /* Absolute fill of the parent gives a deterministic box that
+     object-fit can letterbox against. The earlier flex+max-height
+     setup let the natural image size leak past the container,
+     clipping the bottom (colorbar) on shorter viewports. */
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  user-select: none;
+  image-rendering: -webkit-optimize-contrast;
+  background: var(--panel);
+}
+#frame-loading, #frame-error {
+  /* Re-center over the absolute-positioned frame */
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+}
+#frame-loading, #frame-error {
+  position: absolute;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 11px 20px; border-radius: 8px;
+  font-size: 13px; font-weight: 600;
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+  display: flex; align-items: center; gap: 10px;
+}
+/* Spinner inside the "Rendering frame…" box */
+#frame-loading::before {
+  content: '';
+  display: inline-block;
+  width: 15px; height: 15px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: pill-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+:root[data-theme="light"] #frame-loading,
+:root[data-theme="light"] #frame-error {
+  background: rgba(255,255,255,0.97);
+  color: #0f172a;
+  border-color: #cbd5e1;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+#frame-error { color: #ef4444; border-color: #b91c1c; }
+
+/* Progress bar inside the "Rendering frame…" boxes */
+.fl-body { display: flex; flex-direction: column; gap: 6px; min-width: 156px; }
+.fl-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+}
+.fl-pct {
+  font-variant-numeric: tabular-nums; font-weight: 700;
+  opacity: 0.7; font-size: 12px; min-width: 34px; text-align: right;
+}
+.fl-track {
+  height: 4px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,0.16);
+}
+.fl-fill {
+  height: 100%; width: 0%; border-radius: 999px;
+  background: var(--accent); transition: width 0.15s ease;
+}
+#frame-loading-b .fl-track { background: rgba(255,255,255,0.18); }
+#frame-loading-b .fl-fill  { background: #7fb2ff; }
+:root[data-theme="light"] #frame-loading .fl-track { background: rgba(0,0,0,0.10); }
+:root[data-theme="light"] #frame-error { color: #b91c1c; }
+
+/* ========================== Right rail ========================== */
+#right-rail {
+  background: var(--rail);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+}
+.rail-section { border-bottom: 1px solid var(--border); }
+.rail-header {
+  background: var(--header-bar); color: var(--header-fg);
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 6px 10px;
+}
+.rail-body, .rail-search { padding: 8px 10px; }
+.rail-search input {
+  width: 100%;
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 5px 8px; border-radius: 3px;
+  font-size: 12px;
+}
+
+#product-list { padding: 0 0 6px; }
+.prod-cat {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--fg);
+  padding: 8px 10px 3px 7px;
+  border-left: 3px solid var(--accent);
+}
+.prod-item {
+  display: block;
+  padding: 4px 10px 4px 18px;
+  cursor: pointer; font-size: 12px;
+  color: var(--fg);
+  border-left: 3px solid transparent;
+  line-height: 1.35;
+}
+.prod-item:hover { background: var(--panel-2); }
+.prod-item.active {
+  background: var(--accent-2); border-left-color: var(--accent);
+  color: #fff; font-weight: 600;
+}
+.prod-item .ftype-chip {
+  display: inline-block;
+  font-size: 9.5px; padding: 1px 5px; border-radius: 2px;
+  background: rgba(59,130,246,0.12);
+  color: var(--accent);
+  border: 1px solid rgba(59,130,246,0.2);
+  margin-left: 6px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+.prod-item.active .ftype-chip {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.75);
+  border-color: rgba(255,255,255,0.2);
+}
+
+.row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px; font-size: 12px;
+}
+.row span:first-child { color: var(--muted); flex: 0 0 auto; min-width: 60px; }
+.row select {
+  flex: 1; background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 3px 6px; border-radius: 3px; font-size: 12px;
+}
+
+.kbd-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  font-size: 12px;
+}
+.kbd-grid kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 0 5px; border-radius: 3px;
+  font-size: 11px;
+  min-width: 16px; text-align: center;
+}
+.src { font-size: 11.5px; line-height: 1.5; }
+.src p { margin: 0 0 6px; }
+
+/* ========================== Status bar ========================== */
+#statusbar {
+  position: absolute; bottom: 0; left: 0; right: 0; height: var(--statusbar-h);
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0 12px; font-size: 11px; color: var(--muted);
+  background: var(--panel); border-top: 1px solid var(--border);
+}
+#status { font-variant-numeric: tabular-nums; }
+
+/* ========================== Responsive ========================== */
+@media (max-width: 900px) {
+  :root { --rail-w: 0; }
+  #right-rail { display: none; }
+  #map-wrap { border-right: none; }
+}
+
+/* ====================== Click-to-zoom lightbox ===================== */
+.zoom-overlay {
+  position: fixed; inset: 0; z-index: 250;
+  background: rgba(0,0,0,0.92);
+  display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.zoom-overlay.hidden { display: none; }
+.zoom-overlay img {
+  max-width: 96vw; max-height: 96vh;
+  width: auto; height: auto;
+  object-fit: contain;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+}
+.zoom-close {
+  position: absolute; top: 14px; right: 18px;
+  background: rgba(0,0,0,0.55); color: #fff;
+  border: 1px solid rgba(255,255,255,0.3); border-radius: 50%;
+  width: 34px; height: 34px;
+  font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+#frame { cursor: zoom-in; }
+#map-wrap.draw-mode #frame { cursor: crosshair; }
+
+/* MRMS observed-reflectivity overlay — contours at convective thresholds.
+   Sits BELOW the LSR overlay (z-index 2 vs 3) so storm-report markers
+   draw on top of the radar contours. */
+#mrms-overlay {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  image-rendering: -webkit-optimize-contrast;
+  display: none;
+  z-index: 2;
+}
+#mrms-overlay.visible { display: block; }
+
+/* ----- MRMS overlay display modes ----------------------------------------
+   The same WebP is composited differently based on which mode the user
+   picked. "contours" = full opacity (the tile is line-only anyway);
+   "filled"   = translucent so REFS shows through;
+   "only"     = full opacity over a desaturated REFS, which lets the REFS
+                basemap stay visible as a ghost reference while MRMS
+                dominates visually. */
+#mrms-overlay.mode-contours { opacity: 1.0; }
+#mrms-overlay.mode-filled   { opacity: 0.45; }
+#mrms-overlay.mode-only     { opacity: 1.0; }
+#mrms-overlay.mode-compare  { opacity: 1.0; }
+/* MRMS-only mode: the MRMS tile now ships its own basemap, so hide REFS
+   entirely rather than ghosting it (which would double-draw basemap
+   features at slightly different anti-aliasing). */
+body.mrms-only #frame { visibility: hidden; }
+
+/* Compare mode — swap the absolute stacking for a side-by-side flex layout.
+   The REFS tile and the MRMS tile are the same figsize/projection, so each
+   pane gets the same WebP at half-width and the geographic alignment is
+   preserved. No second backend request: we just unstack the overlay we
+   already fetched. */
+body.mrms-compare #frame-stack {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  align-items: stretch;
+  padding: 4px;
+}
+body.mrms-compare #frame,
+body.mrms-compare #mrms-overlay.mode-compare {
+  position: relative;
+  inset: auto;
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  height: 100%;
+}
+/* LSR overlay only stamps onto the REFS pane in compare mode. The LSR
+   render is figsize-matched to the REFS tile, so `object-fit: contain`
+   inside a half-width box letterboxes identically and the markers stay
+   pixel-aligned with REFS underneath. */
+body.mrms-compare #lsr-overlay,
+body.mrms-compare #flood-lsr-overlay {
+  left: 4px;
+  right: auto;
+  width: calc(50% - 7px);
+}
+/* In compare mode the legend lives in the bottom-left of the MRMS pane,
+   so it docks against the right-half rather than the full image. */
+body.mrms-compare .mrms-legend {
+  left: auto;
+  right: 14px;
+}
+/* Caption is informative for "only" mode; in compare mode the side-by-side
+   layout already tells the user which is which. */
+body.mrms-compare .mrms-caption { display: none; }
+
+/* ── MRMS pill (teal) ───────────────────────────────────────────────────── */
+/* Spinner ::before handled by the shared block above */
+.pill.mrms-pill {
+  color: #67e8f9;
+  border-color: rgba(6,182,212,0.55);
+  background: #0c2a38;
+  animation: mrms-glow 1.5s ease-in-out infinite;
+}
+@keyframes mrms-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(6,182,212,0.50); }
+  55%      { box-shadow: 0 0 0 9px rgba(6,182,212,0); }
+}
+
+/* MRMS-only mode caption — small floating label so the user knows the
+   image they're seeing is observed MRMS, not the REFS product whose
+   header is now grayed out underneath. */
+.mrms-caption {
+  position: absolute;
+  left: 12px; top: 10px;
+  z-index: 6;
+  background: rgba(20, 22, 30, 0.78);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 4px 9px;
+  border-radius: 5px;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.mrms-caption.hidden { display: none; }
+[data-theme="light"] .mrms-caption {
+  background: rgba(255, 255, 255, 0.88);
+  color: #111;
+}
+
+/* MRMS legend — switches its inner content based on the active mode. */
+.mrms-legend {
+  position: absolute;
+  left: 10px; bottom: 10px;
+  z-index: 5;
+  background: rgba(20, 22, 30, 0.78);
+  color: #eee;
+  font-size: 11px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.mrms-legend.hidden { display: none; }
+[data-theme="light"] .mrms-legend {
+  background: rgba(255, 255, 255, 0.88);
+  color: #111;
+}
+.mrms-legend-row {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+.mrms-legend-row.active { display: inline-flex; }
+
+/* Three colored dashes for contour mode */
+.mrms-dash {
+  display: inline-block;
+  width: 18px; height: 3px;
+  border-radius: 1px;
+  margin-left: 4px;
+}
+.mrms-dash-25 { background: #cccccc; }
+.mrms-dash-40 { background: #ffffff; }
+.mrms-dash-55 { background: #ff3030; }
+[data-theme="light"] .mrms-dash-25 { background: #6a6a6a; }
+[data-theme="light"] .mrms-dash-40 { background: #101010; }
+
+/* Compact NWS dBZ palette colorbar for filled / only modes */
+.mrms-cb-title {
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 6px;
+}
+.mrms-cb-bar {
+  display: inline-block;
+  width: 160px; height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(255,255,255,0.18);
+  /* Approximate NWS reflectivity palette ramp from 5 to 75 dBZ */
+  background: linear-gradient(to right,
+    #04e9e7 0%,    /* 5  */
+    #019ff4 12%,   /* 15 */
+    #0300f4 22%,   /* 20 */
+    #02fd02 30%,   /* 25 */
+    #01c501 40%,   /* 30 */
+    #008e00 47%,   /* 35 */
+    #fdf802 55%,   /* 40 */
+    #e5bc00 62%,   /* 45 */
+    #fd9500 68%,   /* 50 */
+    #fd0000 75%,   /* 55 */
+    #d40000 82%,   /* 60 */
+    #bc0000 88%,   /* 65 */
+    #f800fd 94%,   /* 70 */
+    #9854c6 100%); /* 75 */
+}
+[data-theme="light"] .mrms-cb-bar { border-color: rgba(0,0,0,0.25); }
+.mrms-cb-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+}
+.mrms-cb-ticks {
+  display: flex;
+  width: 160px;
+  justify-content: space-between;
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* LSR verification overlay — stacked on top of #frame in the same box, so
+   markers projected into the forecast tile's coordinate system align
+   pixel-for-pixel. Pointer-events:none lets clicks pass through to #frame
+   (zoom-on-click, sector-draw). */
+#lsr-overlay {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  image-rendering: -webkit-optimize-contrast;
+  display: none;                /* hidden until toggle is on */
+  z-index: 3;
+}
+#lsr-overlay.visible { display: block; }
+
+/* Flood / Flash Flood LSR layer — sits one z above the severe layer so
+   maroon X markers render on top when both layers are on. Shares the
+   severe layer's geometry exactly so markers register pixel-for-pixel. */
+#flood-lsr-overlay {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  image-rendering: -webkit-optimize-contrast;
+  display: none;
+  z-index: 4;
+}
+#flood-lsr-overlay.visible { display: block; }
+
+/* REFS forecast composite-reflectivity contour overlay. Stacks above
+   the MRMS tile (z-index 2) and below LSR markers (z-index 3+), so
+   storm reports stay visible over the contour lines. In compare mode
+   we dock to the right half — same geometry as #mrms-overlay — so the
+   dashed forecast contours land directly on the MRMS observation panel. */
+#refs-contour-overlay {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  image-rendering: -webkit-optimize-contrast;
+  display: none;
+  z-index: 2;
+}
+#refs-contour-overlay.visible { display: block; }
+
+/* WxWorks region boundary overlay — sits below LSR markers but above
+   forecast fill so colored polygon outlines are clearly visible. */
+#regions-overlay {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  image-rendering: -webkit-optimize-contrast;
+  display: none;
+  z-index: 5;
+}
+#regions-overlay.visible { display: block; }
+/* Boost contour line visibility in dark mode — the WebP is pre-rendered at
+   moderate saturation and can wash out against dark map tiles. */
+:root:not([data-theme="light"]) #refs-contour-overlay {
+  filter: brightness(1.6) saturate(1.4) contrast(1.15);
+}
+body.mrms-compare #refs-contour-overlay {
+  right: 4px;
+  left: auto;
+  width: calc(50% - 7px);
+}
+
+/* Legend chip for the REFS contour overlay, docked top-right so it
+   doesn't collide with the bottom-right LSR / flood legends. */
+.refs-contour-legend {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 6;
+  background: rgba(20, 22, 30, 0.78);
+  color: #eee;
+  font-size: 11px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.refs-contour-legend.hidden { display: none; }
+/* Short dashed swatches matching the dBZ rim colors used by the
+   transparent contour WebP. Kept in sync with REFS_CONTOUR_LEVELS in
+   app/render.py — if you change the palette there, change it here too. */
+.refs-dash {
+  display: inline-block; width: 16px; height: 2px;
+  background-image: linear-gradient(to right,
+    currentColor 0 5px, transparent 5px 8px,
+    currentColor 8px 13px, transparent 13px 16px);
+  margin: 0 2px 0 6px;
+}
+.refs-dash-20 { color: #9defff; }
+.refs-dash-35 { color: #ffffff; }
+.refs-dash-50 { color: #ffaad4; }
+[data-theme="light"] .refs-contour-legend {
+  background: rgba(255,255,255,0.88);
+  color: #111;
+}
+[data-theme="light"] .refs-dash-20 { color: #007b94; }
+[data-theme="light"] .refs-dash-35 { color: #1a1a1a; }
+[data-theme="light"] .refs-dash-50 { color: #b5004a; }
+
+/* Small floating legend that appears with the overlay. */
+.lsr-legend {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 5;
+  background: rgba(20, 22, 30, 0.78);
+  color: #eee;
+  font-size: 11px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.lsr-legend.hidden { display: none; }
+/* Flood legend stacks just above the severe legend (right edge of the
+   frame). Both are independently togglable, so position them so they
+   don't overlap when both are visible. */
+.lsr-legend.lsr-legend-flood { bottom: 42px; }
+.lsr-dot {
+  display: inline-block;
+  width: 9px; height: 9px;
+  border: 1px solid #000;
+  margin: 0 3px 0 6px;
+}
+.lsr-dot.lsr-tor   { background: #ff1a1a; clip-path: polygon(50% 0, 100% 100%, 0 100%); border: none; }
+.lsr-dot.lsr-hail  { background: #22d35a; border-radius: 50%; }
+.lsr-dot.lsr-wind  { background: #3f8aff; border-radius: 1px; }
+/* Flood / Flash Flood — maroon X (combines IEM type 'F' + 'E'). */
+.lsr-dot.lsr-flood { background: #7a1f1f; border: none; clip-path: polygon(
+  20% 0%, 50% 30%, 80% 0%, 100% 20%, 70% 50%, 100% 80%, 80% 100%,
+  50% 70%, 20% 100%, 0% 80%, 30% 50%, 0% 20%); }
+
+/* Toggle row styling so the checkbox sits comfortably with the label. */
+.toggle-row {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer;
+}
+.toggle-row input[type="checkbox"] { margin: 0; }
+
+/* ---------- Hover value probe tooltip ------------------------------------ */
+#probe-tip {
+  position: absolute;
+  z-index: 40;
+  pointer-events: none;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font: 600 12px/1.3 ui-monospace, Menlo, Consolas, monospace;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+  white-space: nowrap;
+}
+#probe-tip.hidden { display: none; }
+
+/* ---------- Favorites ----------------------------------------------------- */
+.fav-star {
+  display: inline-block;
+  width: 18px;
+  margin-right: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  transition: color .15s, transform .1s;
+}
+.fav-star:hover { color: #f5b50a; transform: scale(1.25); }
+.fav-star.faved { color: #f5b50a; }
+.fav-hint {
+  padding: 18px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---------- Meteogram modal ------------------------------------------------ */
+#meteogram-card {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.6);
+  width: min(720px, 94vw);
+  cursor: default;
+}
+#meteogram-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+}
+#meteogram-close {
+  background: none; border: none; color: var(--muted);
+  font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+#meteogram-close:hover { color: var(--fg); }
+#meteogram-body { padding: 12px 14px 16px; }
+#meteogram-body svg { width: 100%; height: auto; display: block; }
+.meteogram-sub {
+  color: var(--muted); font-size: 12.5px; margin-bottom: 8px;
+}
+.meteogram-msg {
+  padding: 48px 10px; text-align: center; color: var(--muted);
+  font-size: 14px; line-height: 1.6;
+}
+.meteogram-msg-sub { font-size: 12px; opacity: .75; }
+.mg-grid  { stroke: var(--border); stroke-width: 1; opacity: .6; }
+.mg-ylab, .mg-xlab { fill: var(--fg); font: 11px ui-monospace, Consolas, monospace; }
+.mg-xlab2 { fill: var(--muted); font: 9.5px ui-monospace, Consolas, monospace; }
+.mg-line  { stroke: var(--accent); stroke-width: 2.2; stroke-linejoin: round; }
+.mg-dot   { fill: var(--accent); }
+.probe-hint {
+  display: block; font-weight: 400; font-size: 10px;
+  color: var(--muted); margin-top: 1px;
+}
