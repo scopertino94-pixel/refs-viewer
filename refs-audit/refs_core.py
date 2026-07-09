@@ -2570,7 +2570,7 @@ class PlotManager:
 
     # -------------------------------------------------------------------
     def shaded(self, data, lats, lons, prod, region, run_dt, fhr,
-               overlays=None):
+               overlays=None, vectors=None, barbs=None):
         fig, ax = self._setup(region)
         cm, norm, lv = _CMAPS[prod['cmap']]()
 
@@ -2626,6 +2626,26 @@ class PlotManager:
                 levels=sc['levels'], colors=sc.get('colors'),
                 smooth=sc.get('smooth'),
                 linewidths=sc.get('linewidths', 1.0)))
+
+        # Optional wind vectors (quiver, direction of transport) or barbs,
+        # threaded in from a composite's ingredients.
+        if vectors is not None:
+            uu, vv, vspec = vectors
+            sk = vspec.get('skip', 40)
+            ax.quiver(lons2d[::sk, ::sk], lats2d[::sk, ::sk],
+                      uu[::sk, ::sk], vv[::sk, ::sk],
+                      transform=ccrs.PlateCarree(), zorder=7,
+                      color=self._ink(vspec.get('color', '#333333'),
+                                      vspec.get('color_dark', '#e8e8e8')),
+                      scale=vspec.get('scale', 700), width=0.0022,
+                      headwidth=4, headlength=5)
+        if barbs is not None:
+            uu, vv, bspec = barbs
+            sk = bspec.get('skip', 45)
+            ax.barbs(lons2d[::sk, ::sk], lats2d[::sk, ::sk],
+                     uu[::sk, ::sk] * 1.94384, vv[::sk, ::sk] * 1.94384,
+                     transform=ccrs.PlateCarree(), length=5.0, linewidth=0.5,
+                     zorder=7, color=self.theme.get('fg', '#111111'))
 
         self._header(fig, prod, run_dt, fhr)
         return fig
@@ -3874,8 +3894,16 @@ class PlotJob:
             ov = dict(cspec)
             ov.update(data=cdata, lats=lats, lons=lons)
             overlays.append(ov)
+        # Optional quiver vectors / wind barbs drawn from loaded ingredients.
+        def _uv(spec):
+            if not spec:
+                return None
+            uu, vv = loaded.get(spec['u']), loaded.get(spec['v'])
+            return (uu, vv, spec) if uu is not None and vv is not None else None
         return self.pm.shaded(result, lats, lons, prod, region, run_dt, fhr,
-                              overlays=overlays)
+                              overlays=overlays,
+                              vectors=_uv(prod.get('vectors')),
+                              barbs=_uv(prod.get('barbs')))
 
     def _member_mean(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """Mean of a single variable across all available ensemble members.

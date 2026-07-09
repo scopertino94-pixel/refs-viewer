@@ -433,7 +433,11 @@ def register() -> None:
     def _cin_ml_field(d, **_):
         return np.asarray(d['cin_ml'])
 
+    def _refc_field(d, **_):
+        return np.asarray(d['refc'])
+
     core.COMPOSITES.update({
+        'refc_field':  _refc_field,
         'scp':         _scp,
         'stp_fixed':   _stp_fixed,
         'ehi_03':      _ehi_03,
@@ -477,25 +481,27 @@ def register() -> None:
             'v_250': dict(ftype='mean', var='v_lvl', level=250),
         },
         contour_fns=[
-            # 10-m convergence: VERY heavy smoothing — native-grid divergence
-            # is salt-and-pepper at 3 km, and sigma 6 still left confetti of
-            # micro-contours. Sigma 12 (~36 km, SPC-mesoanalysis scale) +
-            # a higher floor keeps only coherent boundaries.
-            dict(fn='conv_10m', levels=[15, 30, 60], smooth=12.0,
+            # 10-m convergence: heavy smoothing (σ=12, ~36 km SPC-mesoanalysis
+            # scale) keeps only coherent boundaries. Lower floor (8) so the
+            # convergence axes — the whole point of the chart — actually draw
+            # in weakly-forced warm-season regimes.
+            dict(fn='conv_10m', levels=[8, 20, 40], smooth=12.0,
                  colors=dict(light='#b0006a', dark='#ff5fc0'),
-                 linewidths=[1.1, 1.5, 1.9]),
+                 linewidths=[1.2, 1.7, 2.2]),
             dict(fn='div_250', levels=[6, 12, 24], smooth=12.0,
                  colors=dict(light='#c75300', dark='#ffb056'),
                  linestyles='dashed', linewidths=[1.0, 1.3, 1.6]),
-            # Jet isotachs from 60 kt so the summertime subtropical jet
-            # still draws (75-kt start left June maps empty).
-            dict(fn='isotach_250', levels=[60, 90, 120, 150], smooth=4.0,
+            # Jet isotachs from 50 kt so the summertime subtropical jet draws.
+            dict(fn='isotach_250', levels=[50, 70, 90, 120], smooth=4.0,
                  colors=dict(light='#005a9e', dark='#6fc4ff'),
                  linewidths=[1.6, 2.0, 2.4, 2.8]),
         ],
+        # Deep-layer transport arrows: 10-m flow feeding the convergence axes.
+        vectors=dict(u='u_10m', v='v_10m', scale=520, skip=38,
+                     color='#555555', color_dark='#c8c8c8'),
         spc_title=('PWAT (in, shaded) · 10-m convergence (magenta, 10⁻⁵ s⁻¹) '
                    '· 250-mb isotachs (blue, kt) · 250-mb divergence '
-                   '(dashed orange, 10⁻⁵ s⁻¹)'),
+                   '(dashed orange) · 10-m flow vectors'),
     )
 
     # Low-level moisture feed: 850-mb moisture flux shaded, PWAT contours
@@ -514,17 +520,22 @@ def register() -> None:
             'pwat':    dict(ftype='mean', var='pwat'),
         },
         contour_fns=[
+            # PWAT contours in a neutral color (remapped to the theme's
+            # readable contour color) so they stand apart from the green flux.
             dict(fn='pwat_in', levels=[1.0, 1.5, 2.0], smooth=4.0,
-                 colors=dict(light='#1c5e20', dark='#7fe08a'),
-                 linewidths=[1.1, 1.5, 1.9]),
+                 colors='#000000', linewidths=[1.0, 1.4, 1.8]),
             # σ=8: 850 winds are convectively contaminated at 3 km — light
             # smoothing left 30-kt speckles all over active convection.
             dict(fn='isotach_850', levels=[30, 50, 70], smooth=8.0,
                  colors=dict(light='#8a0000', dark='#ff7a6e'),
                  linestyles='dashed', linewidths=[1.2, 1.6, 2.0]),
         ],
+        # Moisture-transport direction arrows (850-mb wind; length ∝ speed).
+        vectors=dict(u='u_850', v='v_850', scale=650, skip=34,
+                     color='#333333', color_dark='#dcdcdc'),
         spc_title=('850-mb moisture flux (g/kg·m/s, shaded) · PWAT contours '
-                   '(green, in) · 850-mb LLJ isotachs (dashed red, kt)'),
+                   '(in) · 850-mb LLJ isotachs (dashed red, kt) · transport '
+                   'vectors'),
     )
 
     # "Where can storms initiate and rotate" on one map: MLCAPE shading,
@@ -679,21 +690,32 @@ def register() -> None:
                    '— wet-microburst / damaging-wind potential'),
     )
 
+    # Redesigned 2026-07-09: the old column-integrated moisture-convergence
+    # SHADING was hopelessly noisy (a saturated ±200 field with confetti). The
+    # useful signal is WHERE surface convergence boundaries sit relative to
+    # ongoing storms — so shade PMM composite reflectivity, overlay heavily
+    # smoothed 10-m convergence contours, and draw 10-m wind barbs. Reads like
+    # SPC mesoanalysis: storms (fill), boundaries (contours), flow (barbs).
     P['mconv_member_mean'] = dict(
         cat='Synoptic / Moisture',
-        name='Moisture Convergence mean',
-        recipe='member_mean', member_product='2dfld', n_members=5,
-        var='mconv', cmap='mconv', units='10⁻⁵ s⁻¹',
-        convert=lambda x: x * 1e5,        # scale to plot units
-        # mconv at native grid is extremely noisy; the strong sigma blends
-        # member-to-member texture down to the storm-scale boundaries that
-        # are actually meteorologically meaningful. The widened cmap bins
-        # (±200) prevent end-color saturation; mask_below_abs hides the
-        # incoherent near-zero band.
-        smooth_sigma=4.0,
-        mask_below_abs=5.0,
-        spc_title=('Column-integrated moisture convergence (10⁻⁵ s⁻¹; '
-                   'smoothed, ens mean) — pre-storm boundary / CI signal'),
+        name='Sfc Convergence + REFC PMM + 10-m wind',
+        recipe='composite', composite_fn='refc_field',
+        cmap='refc', units='dBZ',
+        ingredients={
+            'refc':  dict(ftype='pmmn', var='refc'),
+            'u_10m': dict(ftype='mean', var='u_10m'),
+            'v_10m': dict(ftype='mean', var='v_10m'),
+        },
+        contour_fns=[
+            # 10-m convergence: σ=12 (~36 km) to keep only coherent boundaries.
+            dict(fn='conv_10m', levels=[10, 20, 40], smooth=12.0,
+                 colors=dict(light='#b0006a', dark='#ff5fc0'),
+                 linewidths=[1.1, 1.6, 2.1]),
+        ],
+        barbs=dict(u='u_10m', v='v_10m', skip=45),
+        spc_title=('Composite reflectivity (dBZ; shaded, PMM) with 10-m '
+                   'convergence contours (magenta, 10⁻⁵ s⁻¹) and 10-m wind '
+                   'barbs — boundaries / convergence-initiation focus'),
     )
 
     P['storm_motion_mean'] = dict(
