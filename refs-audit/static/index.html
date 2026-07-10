@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>REFS Ensemble Viewer</title>
   <meta name="description" content="SPC HREF-style viewer for NOAA's Rapid Ensemble Forecast System (REFS).">
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
@@ -208,6 +208,9 @@
     </div>
 
     <button id="rail-toggle" type="button" title="Hide / show right rail (\\)">‹</button>
+
+    <!-- Phone/tablet only: backdrop behind the right-rail bottom sheet. -->
+    <div id="rail-backdrop" class="hidden"></div>
 
     <aside id="right-rail">
       <div class="rail-section">

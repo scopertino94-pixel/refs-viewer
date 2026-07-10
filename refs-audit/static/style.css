@@ -25,6 +25,29 @@
   --statusbar-h: 22px;
 }
 
+/* ====================== Responsive breakpoints ======================
+   900px = tablet/desktop line (already load-bearing for --rail-w below).
+   600px = phone/tablet line. Both bands get taller topbar/tabs/timeline
+   rows to make room for touch-sized controls added in later chunks; every
+   element below is absolutely positioned off these vars (see #topbar,
+   #tabs, #timeline, #viewer, #statusbar), so bumping a row's height here
+   is the only safe way to grow it -- editing a row's own CSS without
+   updating its var causes the next row down to overlap it. */
+@media (max-width: 899px) {
+  :root {
+    --topbar-h: 52px;
+    --tabs-h: 44px;
+    --timeline-h: 56px;
+  }
+}
+@media (max-width: 599px) {
+  :root {
+    --topbar-h: 56px;
+    --tabs-h: 48px;
+    --timeline-h: 60px;
+  }
+}
+
 :root[data-theme="light"] {
   --bg: #eef2f7;
   --panel: #ffffff;
@@ -103,6 +126,24 @@ a:hover { text-decoration: underline; }
   font-size: 12px;
 }
 #topbar button:hover { background: #2c3e5a; }
+
+/* Phone: all 9+ controls can't fit a fixed 3-column grid, and hiding any
+   of them behind a menu breaks full feature parity -- so the whole bar
+   becomes one horizontally-scrollable row instead (same idiom #tabs and
+   #meta-strip already use for "too many buttons, one screen"). Decorative
+   brand pill is dropped since it's not a control. */
+@media (max-width: 599px) {
+  #topbar {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 10px;
+  }
+  #topbar::-webkit-scrollbar { height: 4px; }
+  #topbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .controls-left, .controls-right { flex: 0 0 auto; }
+  .brand-pill { display: none; }
+}
 
 /* Model selector highlight — draws the eye to the active model */
 .model-label { display: inline-flex; align-items: center; gap: 6px;
@@ -578,6 +619,7 @@ body.compare-swipe #swipe-handle { display: block; }
   background: var(--panel); border-bottom: 1px solid var(--border);
   z-index: 9;
   overflow-x: auto;
+  scroll-snap-type: x proximity;
 }
 .tab {
   background: var(--tab-bg); color: rgba(207,230,255,0.65);
@@ -589,6 +631,7 @@ body.compare-swipe #swipe-handle { display: block; }
   font-size: 12px; font-weight: 600;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  scroll-snap-align: start;
 }
 .tab:hover { background: rgba(255,255,255,0.12); }
 .tab.active {
@@ -658,6 +701,17 @@ body.compare-swipe #swipe-handle { display: block; }
   border-right: 1px solid #78350f;
 }
 .tl-range-handle:hover { background: rgba(251, 191, 36, 1); }
+
+/* Phone/tablet: 9px is far too narrow to grab with a fingertip. Widen only
+   the touch hit-area via an invisible ::before overlay so the visible amber
+   bar stays thin (::after above is already used for its bracket detail). */
+@media (max-width: 899px) {
+  .tl-range-handle::before {
+    content: "";
+    position: absolute; top: 0; bottom: 0;
+    left: -12px; right: -12px;
+  }
+}
 
 .tl-loop-info {
   color: var(--muted); font-size: 11px;
@@ -1025,10 +1079,49 @@ body.compare-swipe #swipe-handle { display: block; }
 #status { font-variant-numeric: tabular-nums; }
 
 /* ========================== Responsive ========================== */
+/* Phone + tablet (<=899px): the right rail can't sit persistently next to
+   a usable map, but full feature parity means it must stay reachable, not
+   just hidden -- so it becomes a fixed bottom sheet instead. z-index 150,
+   deliberately BELOW .modal (200), .zoom-overlay (250), .alpha-overlay
+   (300) so those still stack correctly if opened while the sheet is open. */
 @media (max-width: 900px) {
   :root { --rail-w: 0; }
-  #right-rail { display: none; }
   #map-wrap { border-right: none; }
+
+  #right-rail {
+    display: block;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-height: 75vh;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: 10px 10px 0 0;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+    z-index: 150;
+    transform: translateY(100%);
+    transition: transform 220ms ease;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  #right-rail.rail-open { transform: translateY(0); }
+
+  #rail-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 150;
+  }
+  #rail-backdrop.hidden { display: none; }
+
+  /* #rail-toggle used to sit anchored to the map/rail boundary -- with the
+     rail now off-screen at rest, it becomes a fixed bottom-corner FAB. */
+  #rail-toggle {
+    position: fixed;
+    top: auto; right: 16px;
+    bottom: calc(var(--statusbar-h) + 16px);
+    transform: none;
+    width: 44px; height: 44px;
+    font-size: 16px;
+    z-index: 151;
+  }
 }
 
 /* ====================== Click-to-zoom lightbox ===================== */
@@ -1490,4 +1583,71 @@ body.mrms-compare #refs-contour-overlay {
 .probe-hint {
   display: block; font-weight: 400; font-size: 10px;
   color: var(--muted); margin-top: 1px;
+}
+
+/* ==================== Mobile overrides (Chunks 6-8) ====================
+   Deliberately placed at the very end of the file: every selector here
+   needs to beat an earlier same-specificity base rule (buttons, tabs,
+   fhr-cells, legends, etc.), and for equal specificity plain CSS cascade
+   is decided by source order, not by which one is wrapped in a media
+   query -- an unconditional rule later in the file still wins over an
+   earlier media-gated one once its condition matches. Keep any future
+   mobile-only override down here too, not up near its base rule. */
+
+/* Chunk 6 -- raise ~28px mouse-era touch targets toward the ~44px
+   recommended minimum. Grouped rather than duplicated per-selector. */
+@media (max-width: 899px) {
+  #topbar button,
+  .sector-group button,
+  .run-step,
+  .meta-controls button,
+  .tab,
+  .toggle-row,
+  .row select,
+  #rail-toggle {
+    min-height: 44px;
+  }
+  #topbar button,
+  .sector-group button,
+  .run-step,
+  .meta-controls button {
+    min-width: 44px;
+    padding: 10px 12px;
+  }
+  .tab { padding-top: 12px; padding-bottom: 12px; }
+  .fhr-cell { flex-basis: 44px; min-width: 44px; }
+  .toggle-row input[type="checkbox"] { width: 20px; height: 20px; }
+}
+
+/* Chunk 7 -- the 5 absolutely-positioned legend chips (MRMS, LSR,
+   flood-LSR, REFS-contour, paintball) risk covering more of a narrower
+   map image proportionally. Scale font/padding down rather than hiding
+   any -- every overlay stays visible, just occupies less space. */
+@media (max-width: 599px) {
+  .mrms-legend, .lsr-legend, .refs-contour-legend, .paintball-legend {
+    font-size: 9px;
+    padding: 4px 6px;
+    gap: 4px;
+  }
+  /* .lsr-legend/.lsr-legend-flood sit bottom-right, same corner the
+     Chunk-5 rail-toggle FAB now occupies -- shift them clear of it. */
+  .lsr-legend { right: 66px; }
+
+  /* Chunk 8 -- suppress iOS's native long-press "Save Image" callout so it
+     doesn't fight the custom long-press-for-meteogram gesture above. */
+  #frame { -webkit-touch-callout: none; }
+}
+
+/* Chunk 8 -- safe-area-inset handling for iOS notch / home-indicator.
+   Requires viewport-fit=cover in index.html's viewport meta (added) --
+   without it env(safe-area-inset-*) always resolves to 0 and these are
+   inert. Unconditional (not breakpoint-gated): env() resolves to 0px on
+   every non-notched browser, so this is a no-op on desktop already. */
+#statusbar {
+  height: calc(var(--statusbar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
+}
+#viewer {
+  bottom: calc(var(--statusbar-h) + env(safe-area-inset-bottom, 0px));
 }

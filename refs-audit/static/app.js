@@ -64,6 +64,22 @@ let lastInteractionTs = 0;
 function noteInteraction() { lastInteractionTs = Date.now(); }
 const FRAME = () => $("frame");
 
+// ----- Responsive mode (phone / tablet-down) --------------------------
+// Single matchMedia-driven hook every mobile-specific chunk branches on,
+// instead of scattered window.innerWidth checks. Runs immediately (script
+// is loaded at end of <body>, so document.body already exists) rather than
+// waiting for DOMContentLoaded, so body classes are set before any other
+// DOMContentLoaded handler (e.g. rail-toggle's click wiring) runs.
+const mqPhone = window.matchMedia("(max-width: 599px)");
+const mqTabletDown = window.matchMedia("(max-width: 899px)");
+function applyResponsiveMode() {
+  document.body.classList.toggle("is-phone", mqPhone.matches);
+  document.body.classList.toggle("is-tablet-down", mqTabletDown.matches);
+}
+applyResponsiveMode();
+mqPhone.addEventListener("change", applyResponsiveMode);
+mqTabletDown.addEventListener("change", applyResponsiveMode);
+
 document.addEventListener("DOMContentLoaded", () => {
   const saved = localStorage.getItem("refs-theme") || "dark";
   document.documentElement.setAttribute("data-theme", saved);
@@ -86,8 +102,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const railCollapsed = localStorage.getItem("refs-rail-collapsed") === "1";
   applyRailCollapsed(railCollapsed);
   $("rail-toggle").addEventListener("click", () => {
-    const cur = $("viewer").classList.contains("rail-collapsed");
-    applyRailCollapsed(!cur);
+    // Phone/tablet: the rail is a bottom sheet (open/closed), not a
+    // collapse-to-zero-width column -- different toggle target entirely.
+    if (document.body.classList.contains("is-tablet-down")) {
+      applyRailSheet(!$("right-rail").classList.contains("rail-open"));
+    } else {
+      const cur = $("viewer").classList.contains("rail-collapsed");
+      applyRailCollapsed(!cur);
+    }
   });
 
   init().catch(err => setStatus("Init failed: " + err));
@@ -102,6 +124,17 @@ function applyRailCollapsed(collapsed) {
   requestAnimationFrame(() => {
     if (typeof positionDayMarks === "function") positionDayMarks();
   });
+}
+
+// Phone/tablet counterpart to applyRailCollapsed() -- same shape (toggle a
+// class, flip the FAB glyph, no persistence needed since it should default
+// closed each load), but drives the bottom-sheet open/closed instead of a
+// desktop column collapse. Backdrop show/hide travels with it.
+function applyRailSheet(open) {
+  $("right-rail").classList.toggle("rail-open", open);
+  $("rail-backdrop").classList.toggle("hidden", !open);
+  $("rail-toggle").textContent = open ? "✕" : "☰";
+  $("rail-toggle").title = (open ? "Close" : "Open") + " product / overlay panel";
 }
 
 async function init() {
@@ -588,8 +621,20 @@ function buildTabs() {
   }
 }
 function paintTabs() {
-  for (const b of document.querySelectorAll(".tab"))
-    b.classList.toggle("active", b.dataset.tab === state.tab);
+  let activeEl = null;
+  for (const b of document.querySelectorAll(".tab")) {
+    const isActive = b.dataset.tab === state.tab;
+    b.classList.toggle("active", isActive);
+    if (isActive) activeEl = b;
+  }
+  // Keep the active tab visible in the scroll strip (relevant on phone/
+  // tablet where #tabs no longer fits every tab at once). Guard with rAF
+  // so this runs after the toggled class has actually painted/laid out.
+  if (activeEl) {
+    requestAnimationFrame(() => {
+      activeEl.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+    });
+  }
 }
 
 // ----- Product list (right rail) -----------------------------------------
@@ -684,7 +729,13 @@ function buildProductList() {
 function buildTimeline() {
   const hoursRow = $("tl-hours");
   const daysRow  = $("tl-days");
-  hoursRow.innerHTML = "";
+  // #tl-hours has 5 static utility children in index.html (playhead, loop
+  // shades, drag handles) alongside the .fhr-cell strip this function
+  // rebuilds. Only clear the generated cells -- wiping innerHTML wholesale
+  // deletes those static elements permanently (they're never re-created
+  // anywhere else), silently breaking the playhead/loop-drag feature after
+  // the first rebuild.
+  for (const cell of hoursRow.querySelectorAll(".fhr-cell")) cell.remove();
   daysRow.innerHTML  = "";
 
   const max = activeMaxFhour();
@@ -805,6 +856,13 @@ function positionPlayhead() {
   if (!r) { ph.style.display = "none"; return; }
   ph.style.display = "block";
   ph.style.left = (r.left + r.width / 2 - 1) + "px";
+  // #tl-hours has always been horizontally scrollable (overflow-x:auto) --
+  // a 60-hour range at typical cell widths is wider than most viewports,
+  // desktop included. Without this, stepping past the visible window (e.g.
+  // arrow-key scrubbing beyond ~F48) silently scrolls the active frame
+  // off-screen with nothing to bring it back into view.
+  const cell = $("tl-hours").querySelector(`.fhr-cell[data-h="${state.fhr}"]`);
+  if (cell) cell.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
 }
 
 function positionLoopRange() {
@@ -883,6 +941,25 @@ function setupLoopDrag() {
     updateLoopInfo();
   });
   document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = null;
+    document.body.style.userSelect = "";
+    writeURLState();
+  });
+  // Touch equivalent, mirroring wireSwipeHandle()'s dual-input pattern —
+  // fhrFromClientX() is clientX-based so it works unchanged for touches.
+  hMin.addEventListener("touchstart", onDown("min"), {passive: false});
+  hMax.addEventListener("touchstart", onDown("max"), {passive: false});
+  document.addEventListener("touchmove", e => {
+    if (!dragging) return;
+    e.preventDefault();
+    const fhr = fhrFromClientX(e.touches[0].clientX);
+    if (dragging === "min")      state.fmin = Math.min(fhr, state.fmax - 1);
+    else if (dragging === "max") state.fmax = Math.max(fhr, state.fmin + 1);
+    positionLoopRange();
+    updateLoopInfo();
+  }, {passive: false});
+  document.addEventListener("touchend", () => {
     if (!dragging) return;
     dragging = null;
     document.body.style.userSelect = "";
@@ -2730,6 +2807,24 @@ setInterval(async () => {
   });
 })();
 
+// ---------- Right-rail bottom sheet (phone/tablet) --------------------------
+// Backdrop-click + Escape close, mirroring wireZoomLightbox() above. Kept as
+// its own self-contained IIFE rather than folded into wireEvents() so it
+// doesn't need auditing against that function's existing INPUT/SELECT
+// early-return in the keydown handler.
+(function wireRailSheet() {
+  const rail     = document.getElementById("right-rail");
+  const backdrop = document.getElementById("rail-backdrop");
+  if (!rail || !backdrop) return;
+
+  function close() { applyRailSheet(false); }
+
+  backdrop.addEventListener("click", close);
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && rail.classList.contains("rail-open")) close();
+  });
+})();
+
 // ---------- Frame coordinate helper ----------------------------------------
 // #frame uses object-fit:contain — find the letterboxed content box so the
 // returned fractions refer to the actual image, not the element. Returns
@@ -2898,12 +2993,12 @@ function probeSectorParams(qs) {
       `<div class="meteogram-sub">${series.name}${series.units ? " (" + series.units + ")" : ""} · ${latlon} · ${state.date} ${String(state.run).padStart(2,"0")}Z run</div>` + svg;
   }
 
-  frame.addEventListener("click", async (e) => {
-    if (!e.shiftKey) return;
-    e.stopPropagation();
-    e.preventDefault();
+  // Shared by both triggers: Shift+click (desktop) and long-press (touch,
+  // added below) -- takes a raw point rather than an event so a touch's
+  // {clientX, clientY} works exactly like a mouse event's.
+  async function openMeteogramAt(clientX, clientY) {
     if (state.drawMode) return;
-    const f = frameFractions(frame, e);
+    const f = frameFractions(frame, { clientX, clientY });
     if (!f) return;
     title.textContent = `Meteogram — ${state.pidName || state.pid}`;
     body.innerHTML = `<div class="meteogram-msg">Sampling all forecast hours…<br>
@@ -2924,5 +3019,41 @@ function probeSectorParams(qs) {
     } catch {
       body.innerHTML = `<div class="meteogram-msg">Failed to build the meteogram — try again.</div>`;
     }
+  }
+
+  frame.addEventListener("click", (e) => {
+    if (!e.shiftKey) return;
+    e.stopPropagation();
+    e.preventDefault();
+    openMeteogramAt(e.clientX, e.clientY);
   }, true);
+
+  // Touch has no modifier key, so Shift+click has no equivalent -- a
+  // long-press (~500ms hold, no more than a few px of drift) opens the
+  // meteogram instead. Cancelled by early release or by drifting past the
+  // threshold (so it doesn't fire mid-scroll/pan).
+  const LONG_PRESS_MS = 500;
+  const LONG_PRESS_SLOP = 10;
+  let pressTimer = null, pressStart = null;
+  function cancelPress() {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    pressStart = null;
+  }
+  frame.addEventListener("touchstart", (e) => {
+    if (state.drawMode || e.touches.length !== 1) { cancelPress(); return; }
+    const t = e.touches[0];
+    pressStart = { x: t.clientX, y: t.clientY };
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      openMeteogramAt(t.clientX, t.clientY);
+    }, LONG_PRESS_MS);
+  }, { passive: true });
+  frame.addEventListener("touchmove", (e) => {
+    if (!pressStart) return;
+    const t = e.touches[0];
+    if (Math.abs(t.clientX - pressStart.x) > LONG_PRESS_SLOP ||
+        Math.abs(t.clientY - pressStart.y) > LONG_PRESS_SLOP) cancelPress();
+  }, { passive: true });
+  frame.addEventListener("touchend", cancelPress);
+  frame.addEventListener("touchcancel", cancelPress);
 })();
