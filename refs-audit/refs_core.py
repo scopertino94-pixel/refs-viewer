@@ -662,6 +662,16 @@ def cmap_wind_sfc():
     lv = [5,10,15,20,25,30,35,40,45,50,55,60,70,80,90,100]
     return _cmap(_mpl_palette('turbo', lv), lv, 'wind_sfc')
 
+def cmap_rh():
+    # 2-m relative humidity (%).
+    lv = [10,20,30,40,50,60,70,80,90,95,100]
+    return _cmap(_mpl_palette('BrBG', lv), lv, 'rh')
+
+def cmap_mslp():
+    # Mean sea-level pressure (hPa). Typical CONUS range ~985-1035.
+    lv = [960,970,980,990,1000,1005,1010,1015,1020,1025,1030,1040]
+    return _cmap(_mpl_palette('turbo', lv), lv, 'mslp')
+
 def cmap_shear():
     # 0-6 km bulk wind shear (kt). Meaningful severe thresholds: ~20 marginal,
     # 30-40 supercell-supportive, 50-60 strong. Capped at 80 — 0-6 km bulk
@@ -3388,6 +3398,7 @@ _CMAPS = {
     'cin': cmap_cin, 'qpf': cmap_qpf, 'prob': cmap_prob,
     'w500': cmap_wind500, 'w250': cmap_wind250, 'wind500': cmap_wind500,
     'wind250': cmap_wind250, 'wind_sfc': cmap_wind_sfc, 'shear': cmap_shear,
+    'rh': cmap_rh, 'mslp': cmap_mslp,
     'pwat': cmap_pwat, 'pwat_in': cmap_pwat_in,
     'retop_kft': cmap_retop_kft, 'srh': cmap_srh, 't2m': cmap_t2m,
     'td2m': cmap_td2m, 'snow': cmap_snow, 'clouds': cmap_clouds, 'vis': cmap_vis,
@@ -3495,6 +3506,8 @@ class PlotJob:
             return self._prob_window(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'qpf_sum':
             return self._qpf_sum(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_mean':
+            return self._reps_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4004,6 +4017,44 @@ class PlotJob:
                 overlays.append(od)
         return self.pm.shaded(total, lats, lons, prod, region, run_dt, fhr,
                               overlays=overlays)
+
+    def _reps_mean(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """Environment Canada REPS ensemble mean.
+
+        Genuinely independent data source from REFS/HREF: different agency
+        (ECCC), different fetch model (full-file download, no byte-range --
+        see app/reps_grib.py), different grid (10km rotated-pole). Uses
+        prod keys:
+          reps_var   (str) : GRIB2 variable token, e.g. "TMP"
+          reps_level (str) : GRIB2 level token, e.g. "AGL-2m"
+        The field loader (app/reps_core.py) already returns real-world
+        lat/lon, pre-cropped to a sane bounding box -- self.pm.shaded()
+        needs no REPS-specific handling at all.
+        """
+        import asyncio
+        from app import reps_core as reps
+
+        var = prod.get('reps_var')
+        level = prod.get('reps_level')
+        if not var or not level:
+            status_cb(f"{prod['name']}: malformed REPS product (missing reps_var/reps_level)")
+            return None
+
+        status_cb(f"Fetching REPS {var} {level} F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_mean(cache_dir, date_str, run, var, level, fhr))
+        except Exception as e:
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        if 'convert' in prod:
+            data = prod['convert'](data)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
 
     def _member_prob(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """Member-derived neighborhood probability of var > thresh.

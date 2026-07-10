@@ -24,13 +24,17 @@ _initialized = False
 _job_refs = None           # PlotJob backed by REFSDataProcessor
 _job_href = None           # PlotJob backed by HREFDataProcessor
 _job_spc = None            # PlotJob backed by SPCPostDataProcessor (SPC guidance)
+_job_reps = None           # PlotJob for REPS (recipe='reps_mean' never touches
+                           # self.proc -- it does its own async fetch/decode --
+                           # so no dedicated DataProcessor is needed, unlike
+                           # the other three jobs above).
 _core = None               # refs_core module reference
 _init_lock = threading.Lock()
 
 
 def _ensure_initialized():
     """Import refs_core on the calling thread and build PlotJobs for both models."""
-    global _initialized, _job_refs, _job_href, _job_spc, _core
+    global _initialized, _job_refs, _job_href, _job_spc, _job_reps, _core
     if _initialized:
         return
     with _init_lock:
@@ -49,6 +53,13 @@ def _ensure_initialized():
         except Exception as e:
             print(f"[render] extras registration failed: "
                   f"{type(e).__name__}: {e}", flush=True)
+        # Same gotcha applies to REPS's product registry.
+        try:
+            from . import reps_products as _reps_products  # noqa: WPS433
+            _reps_products.register()
+        except Exception as e:
+            print(f"[render] reps_products registration failed: "
+                  f"{type(e).__name__}: {e}", flush=True)
         _core = core
         _job_refs = core.PlotJob(
             core.REFSDataProcessor(local_dir=core.DEFAULT_LOCAL),
@@ -62,6 +73,7 @@ def _ensure_initialized():
             core.SPCPostDataProcessor(local_dir=core.DEFAULT_LOCAL),
             core.PlotManager(),
         )
+        _job_reps = core.PlotJob(None, core.PlotManager())
         _initialized = True
         print(f"[render] refs_core initialized on thread "
               f"{threading.current_thread().name}", flush=True)
@@ -87,12 +99,16 @@ def render(pid: str, date: str, run: int, fhr: int,
     """
     _ensure_initialized()
     core = _core
-    # SPC post-processed calibrated guidance is its own data source, routed to
-    # a dedicated job regardless of the REFS/HREF model toggle.
+    # SPC post-processed calibrated guidance and REPS are each their own
+    # data source, routed to a dedicated job regardless of the REFS/HREF
+    # model toggle.
     _prod = core.PRODUCTS.get(pid)
     _is_spc = bool(_prod and _prod.get("source") == "spc_post")
+    _is_reps = bool(_prod and _prod.get("source") == "reps")
     if _is_spc:
         job = _job_spc
+    elif _is_reps:
+        job = _job_reps
     elif model == "href":
         job = _job_href
     else:
@@ -108,6 +124,7 @@ def render(pid: str, date: str, run: int, fhr: int,
         core.PlotManager.show_regions  = bool(show_regions)
         core.PlotManager.model_label   = (
             "SPC HREF" if _is_spc
+            else "REPS" if _is_reps
             else "HREF v3" if model == "href" else "REFS")
         if bbox is not None:
             lon_min, lat_min, lon_max, lat_max = bbox

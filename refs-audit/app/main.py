@@ -51,6 +51,8 @@ from . import cache_persist           # noqa: E402
 from . import field_persist           # noqa: E402
 from . import href_data               # noqa: E402
 from . import spc_data                # noqa: E402
+from . import reps_data                # noqa: E402
+from . import reps_products as _reps_products  # noqa: E402
 from .catalog import (APP_VERSION, PALETTES, THEMES, catalog,    # noqa: E402
                       regions)
 from .grib_range import (ensure_partial_cached,  # noqa: E402
@@ -238,6 +240,46 @@ async def spc_status(date: str, run: int, pid: str):
         "available": fhrs,
         "count": len(fhrs),
         "min_fhr": int(prod.get("min_fhr", 0)),
+    }
+
+
+@app.get("/api/reps-cycles")
+async def reps_cycles():
+    """Recent available REPS cycles. Separate from /api/cycles (REFS) --
+    REPS is a genuinely independent data source (Environment Canada, not
+    NOAA) with its own cycle availability, unrelated to REFS/HREF's."""
+    try:
+        cycles = await reps_data.list_recent_cycles()
+    except Exception as e:
+        log.exception("reps-cycles failed")
+        raise HTTPException(502, f"{type(e).__name__}: {e}")
+    return {"cycles": cycles}
+
+
+@app.get("/api/reps-status/{date}/{run}/{pid}")
+async def reps_status(date: str, run: int, pid: str):
+    """Available forecast hours for a REPS product in the given cycle.
+
+    REPS publishes atomically per cycle (000-072 by 3h, all at once) rather
+    than incrementally like REFS -- so this just checks whether the cycle
+    itself is currently available and, if so, returns the full expected
+    fhr list, unlike /api/spc-status's per-product probing.
+    """
+    prod = core.PRODUCTS.get(pid)
+    if not prod or prod.get("source") != "reps":
+        raise HTTPException(404, "not a REPS product")
+    try:
+        cycles = await reps_data.list_recent_cycles()
+    except Exception as e:
+        log.exception("reps-status failed")
+        raise HTTPException(502, f"{type(e).__name__}: {e}")
+    exists = any(c["date"] == date and c["run"] == run for c in cycles)
+    fhrs = list(range(0, reps_data.MAX_FHOUR + 1, reps_data.FHOUR_STEP)) if exists else []
+    return {
+        "date": date, "run": run, "pid": pid,
+        "available": fhrs,
+        "count": len(fhrs),
+        "min_fhr": 0,
     }
 
 

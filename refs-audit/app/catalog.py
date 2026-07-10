@@ -12,6 +12,12 @@ import refs_core as core  # noqa: E402
 from . import extra_products as _extras   # noqa: E402
 _extras.register()
 
+# Register REPS (Environment Canada Regional Ensemble Prediction System) --
+# a genuinely independent data source/pipeline from REFS/HREF, given its
+# own top-level tab rather than folded into the REFS/HREF model toggle.
+from . import reps_products as _reps      # noqa: E402
+_reps.register()
+
 
 # Map refs_core category strings → SPC-HREF top-tab buckets.
 TAB_ORDER = [
@@ -24,6 +30,7 @@ TAB_ORDER = [
     "Storm Attributes",
     "Member Viewer",
     "Ensemble Spread",
+    "REPS",
 ]
 
 CATEGORY_TO_TAB = {
@@ -53,6 +60,7 @@ CATEGORY_TO_TAB = {
     "Ensemble Spread":             "Ensemble Spread",
     "Satellite (Simulated)":       "Storm Attributes",
     "Fire Weather":                "Fire",
+    "REPS":                        "REPS",
 }
 
 # A few products move into Winter / Fire when their name implies it.
