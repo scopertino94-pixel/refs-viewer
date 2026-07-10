@@ -18,6 +18,7 @@ const state = {
   catalog: { tabs: {}, regions: [], palettes: [], themes: [], max_fhour: 60, href_max_fhour: 48, runs: [0,6,12,18] },
   cycles: [],                            // [{date, run, label, max_fhour}] from /api/cycles
   hrefCycles: [],                        // [{date, run, label, max_fhour}] from /api/href-cycles
+  repsCycles: [],                        // [{date, run, label, max_fhour}] from /api/reps-cycles
   date: null, run: null,                 // currently-selected cycle
   sector: "CONUS",
   palette: "Default",
@@ -314,6 +315,7 @@ function writeURLState() {
 
 // ----- Model helpers -------------------------------------------------------
 function activeMaxFhour() {
+  if (state.model === "reps") return REPS_MAX_FHOUR;
   return state.model === "href"
     ? (state.catalog.href_max_fhour || 48)
     : state.catalog.max_fhour;
@@ -321,10 +323,15 @@ function activeMaxFhour() {
 
 function applyModelClass() {
   document.body.classList.toggle("model-href", state.model === "href");
+  document.body.classList.toggle("model-reps", state.model === "reps");
 }
 
 function hrefCycleExists(date, run) {
   return state.hrefCycles.some(c => c.date === date && c.run === run);
+}
+
+function repsCycleExists(date, run) {
+  return state.repsCycles.some(c => c.date === date && c.run === run);
 }
 
 function findTabForPid(pid) {
@@ -333,6 +340,13 @@ function findTabForPid(pid) {
       if (items.some(it => it.pid === pid)) return tab;
   return null;
 }
+
+// REPS (Environment Canada) publishes 000-072h by 3h, atomically per cycle --
+// a genuinely different model from REFS/HREF, not just an alternate source
+// for the same catalog, so it gets its own tab (REPS_TAB) rather than being
+// folded into the REFS/HREF product catalog.
+const REPS_TAB = "REPS";
+const REPS_MAX_FHOUR = 72;
 
 // ----- Favorites ----------------------------------------------------------
 const FAV_TAB = "★ Favorites";
@@ -606,7 +620,12 @@ function paintTopbar() {
 function buildTabs() {
   const wrap = $("tabs");
   wrap.innerHTML = "";
+  // REPS is a different model, not a REFS/HREF product category -- show
+  // ONLY its tab when active (so it never reads as "one more REFS tab"),
+  // and hide it entirely otherwise.
   for (const tab of Object.keys(state.catalog.tabs)) {
+    if (state.model === "reps" && tab !== REPS_TAB) continue;
+    if (state.model !== "reps" && tab === REPS_TAB) continue;
     const b = document.createElement("button");
     b.className = "tab"; b.textContent = tab; b.dataset.tab = tab;
     b.addEventListener("click", () => {
@@ -994,7 +1013,8 @@ function paintMeta() {
     `<span class="sep">·</span>` +
     `<span class="label">Palette</span><span class="val">${state.palette}</span>` +
     `<span class="sep">·</span>` +
-    `<span class="model-chip model-chip-${state.model}">${state.model === "href" ? "HREF v3" : "REFS"}</span>`;
+    `<span class="model-chip model-chip-${state.model}">${
+      state.model === "href" ? "HREF v3" : state.model === "reps" ? "REPS" : "REFS"}</span>`;
 }
 
 // ----- SPC calibrated-guidance availability ------------------------------
@@ -1082,6 +1102,29 @@ async function refreshCycleStatus() {
   }
   const pill = $("cycle-status-pill");
   pill.className = "pill"; pill.textContent = "…";
+
+  // REPS (Environment Canada) also publishes atomically per cycle, like
+  // HREF -- but on its own independent schedule, so it gets its own check
+  // against /api/reps-cycles rather than REFS/HREF's cycle list.
+  if (state.model === "reps") {
+    if (!repsCycleExists(state.date, state.run)) {
+      try {
+        const fresh = await fetch("/api/reps-cycles").then(r => r.json());
+        state.repsCycles = fresh.cycles || [];
+      } catch (_) {}
+    }
+    const exists = repsCycleExists(state.date, state.run);
+    if (exists) {
+      state.availableFhours = new Set(
+        Array.from({length: REPS_MAX_FHOUR / 3 + 1}, (_, i) => i * 3));
+      pill.textContent = "Complete"; pill.classList.add("complete");
+    } else {
+      state.availableFhours = new Set();
+      pill.textContent = "unposted"; pill.classList.add("partial");
+    }
+    paintTimeline();
+    return;
+  }
 
   // HREF publishes all forecast hours at once — the cycle is either fully
   // up or not yet posted. No S3 scan needed; just check our known cycle list.
@@ -2269,7 +2312,39 @@ function wireEvents() {
         state.run  = state.hrefCycles[0].run;
         paintTopbar();
       }
+    } else if (state.model === "reps") {
+      // REPS is an independent model with its own cycle schedule and
+      // product catalog -- switch to its tab/a valid product, and jump to
+      // its own latest cycle rather than whatever REFS/HREF cycle was
+      // selected (REPS won't necessarily have data for that exact run).
+      state.tab = REPS_TAB;
+      if (!state.pid || !state.pid.startsWith("reps_")) {
+        state.pid = "reps_t2m_mean";
+        state.pidName = nameForPid(state.pid);
+      }
+      if (state.repsCycles.length === 0) {
+        setStatus("Checking REPS cycles…");
+        try {
+          const j = await fetch("/api/reps-cycles").then(r => r.json());
+          state.repsCycles = j.cycles || [];
+        } catch (e) { setStatus("REPS cycle fetch failed: " + e); }
+      }
+      if (state.repsCycles.length > 0 && !repsCycleExists(state.date, state.run)) {
+        state.date = state.repsCycles[0].date;
+        state.run  = state.repsCycles[0].run;
+        paintTopbar();
+      }
+    } else if (prev === "reps") {
+      // Switching away from REPS: its tab is now hidden and its pids are
+      // invalid for REFS/HREF, so fall back to the app's own first-visit
+      // default rather than leaving state pointed at an unreachable product.
+      state.tab = "Precipitation";
+      state.pid = "qpf_3h_pmmn_series";
+      state.pidName = nameForPid(state.pid);
     }
+    buildTabs();
+    paintTabs();
+    buildProductList();
     state.loadedFhours = new Set(); state.compareLoadedFhours = new Set(); ++comparePreloadGen;
     state.availableFhours = new Set();
     buildTimeline();

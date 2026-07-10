@@ -155,10 +155,16 @@ a:hover { text-decoration: underline; }
   font-family: inherit; font-weight: 600;
 }
 #model-select option[value="href"] { color: #b45309; }
+#model-select option[value="reps"] { color: #dc2626; }
 .model-href #model-select { background: #fef3c7; color: #92400e;
   border-color: #f59e0b; }
+/* REPS is a different agency/model entirely (Environment Canada, not
+   NOAA) -- a distinct red rather than REFS blue or HREF amber, so the
+   Model selector itself signals "different data source" at a glance. */
+.model-reps #model-select { background: #fee2e2; color: #991b1b;
+  border-color: #dc2626; }
 
-/* HREF banner chip shown in the meta strip */
+/* HREF/REPS banner chip shown in the meta strip */
 .model-chip {
   display: inline-block;
   padding: 1px 7px; border-radius: 999px;
@@ -167,6 +173,7 @@ a:hover { text-decoration: underline; }
 }
 .model-chip-refs { background: #1e3a5f; color: #7fb2ff; }
 .model-chip-href { background: #78350f; color: #fde68a; }
+.model-chip-reps { background: #7f1d1d; color: #fecaca; }
 
 /* ── Compare button (lives in the topbar controls-left strip) ───────────── */
 .compare-btn {
