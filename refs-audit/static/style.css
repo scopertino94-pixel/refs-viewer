@@ -665,14 +665,11 @@ body.compare-swipe #swipe-handle { display: block; }
 
 /* Timeline play-head cursor (a thin vertical line tracking state.fhr) */
 #tl-playhead {
-  position: absolute; top: 0; bottom: 0;
-  width: 2px;
-  background: #ef4444;
-  box-shadow: 0 0 6px rgba(239,68,68,0.7);
-  pointer-events: none;
-  z-index: 4;
-  transition: left 120ms ease-out;
-  display: none;       /* JS shows it once positioned */
+  /* The active .fhr-cell already gets a clear highlight (dark-blue fill),
+     so this red line is redundant on top of it -- kept hidden regardless
+     of what positionPlayhead() sets, rather than ripping out the JS (still
+     useful groundwork if a future design wants a marker again). */
+  display: none !important;
 }
 
 /* Loop-range shaded regions (outside the [fmin, fmax] window) */
