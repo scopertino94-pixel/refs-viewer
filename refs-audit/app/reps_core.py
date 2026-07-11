@@ -114,3 +114,24 @@ async def load_reps_mean(
         return None
     members, lat2d, lon2d = result
     return members.mean(axis=0), lat2d, lon2d
+
+
+async def load_reps_wind_speed_mean(
+    cache_dir: Path, date: str, run: int, level: str, fhr: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Ensemble-mean wind SPEED at a level, from separate UGRD/VGRD files.
+
+    REPS publishes wind components (not a pre-combined speed field) at
+    pressure levels, unlike the AGL-10m "WIND" file which is speed
+    already. Speed is computed per-member (sqrt(u^2+v^2)) BEFORE
+    averaging -- averaging components first would understate speed in a
+    spread-out ensemble (vector mean vs. mean of magnitudes).
+    """
+    u = await load_reps_members(cache_dir, date, run, "UGRD", level, fhr)
+    v = await load_reps_members(cache_dir, date, run, "VGRD", level, fhr)
+    if u is None or v is None:
+        return None
+    u_members, lat2d, lon2d = u
+    v_members, _, _ = v
+    speed_members = np.sqrt(u_members**2 + v_members**2)
+    return speed_members.mean(axis=0), lat2d, lon2d

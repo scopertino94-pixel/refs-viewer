@@ -667,6 +667,12 @@ def cmap_rh():
     lv = [10,20,30,40,50,60,70,80,90,95,100]
     return _cmap(_mpl_palette('BrBG', lv), lv, 'rh')
 
+def cmap_hgt500():
+    # 500-mb geopotential height (dam = decameters, the standard synoptic
+    # unit). Typical NH summer range ~552-594 dam; ridges can push higher.
+    lv = [534,540,546,552,558,564,570,576,582,588,594,600]
+    return _cmap(_mpl_palette('turbo', lv), lv, 'hgt500')
+
 def cmap_mslp():
     # Mean sea-level pressure (hPa). Typical CONUS range ~985-1035.
     lv = [960,970,980,990,1000,1005,1010,1015,1020,1025,1030,1040]
@@ -3398,7 +3404,7 @@ _CMAPS = {
     'cin': cmap_cin, 'qpf': cmap_qpf, 'prob': cmap_prob,
     'w500': cmap_wind500, 'w250': cmap_wind250, 'wind500': cmap_wind500,
     'wind250': cmap_wind250, 'wind_sfc': cmap_wind_sfc, 'shear': cmap_shear,
-    'rh': cmap_rh, 'mslp': cmap_mslp,
+    'rh': cmap_rh, 'mslp': cmap_mslp, 'hgt500': cmap_hgt500,
     'pwat': cmap_pwat, 'pwat_in': cmap_pwat_in,
     'retop_kft': cmap_retop_kft, 'srh': cmap_srh, 't2m': cmap_t2m,
     'td2m': cmap_td2m, 'snow': cmap_snow, 'clouds': cmap_clouds, 'vis': cmap_vis,
@@ -3508,6 +3514,8 @@ class PlotJob:
             return self._qpf_sum(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'reps_mean':
             return self._reps_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_wind_level_mean':
+            return self._reps_wind_level_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4045,6 +4053,37 @@ class PlotJob:
         try:
             result = asyncio.run(
                 reps.load_reps_mean(cache_dir, date_str, run, var, level, fhr))
+        except Exception as e:
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        if 'convert' in prod:
+            data = prod['convert'](data)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_wind_level_mean(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS ensemble-mean wind SPEED at a pressure level (500/250 mb
+        etc.) -- REPS publishes U/V components at levels, not a combined
+        speed field there (unlike the surface AGL-10m "WIND" file). See
+        app/reps_core.py's load_reps_wind_speed_mean for why per-member
+        speed is computed before averaging, not the other way around.
+        """
+        import asyncio
+        from app import reps_core as reps
+
+        level = prod.get('reps_level')
+        if not level:
+            status_cb(f"{prod['name']}: malformed REPS product (missing reps_level)")
+            return None
+
+        status_cb(f"Fetching REPS wind {level} F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_wind_speed_mean(cache_dir, date_str, run, level, fhr))
         except Exception as e:
             status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
             return None
