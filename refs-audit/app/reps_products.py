@@ -226,6 +226,71 @@ PRODUCTS = {
                    "(low-level jet / moisture-transport indicator)",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
+    # ---- v4: "reasonable worst case" extremes from the TMP/WIND/HEATX/
+    # WCF-Prob bundles' percentile (PDT6) and derived-stat (PDT2) messages.
+    # These files have NO threshold-exceedance messages (confirmed via
+    # eccodes inspection -- unlike the precip-rate -Prob family above),
+    # so this is percentile/mean/spread/min/max, not probability-of-X.
+    "reps_heatidx_p90": dict(
+        cat="REPS Extremes", name="Heat Index (90th Percentile)",
+        recipe="reps_prob_bundle_stat",
+        reps_var="HEATX-Prob", reps_level="AGL-2m",
+        reps_pdt=6, reps_match_key="percentileValue", reps_match_val=90,
+        cmap="t2m", units="degF", convert=_K_TO_F,
+        spc_title="REPS heat index — 90th percentile across 21 members "
+                   "(reasonable worst-case heat, decoded directly from REPS's own product)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_heatidx_max": dict(
+        cat="REPS Extremes", name="Heat Index (Ensemble Max)",
+        recipe="reps_prob_bundle_stat",
+        reps_var="HEATX-Prob", reps_level="AGL-2m",
+        reps_pdt=2, reps_match_key="derivedForecast", reps_match_val=9,
+        cmap="t2m", units="degF", convert=_K_TO_F,
+        spc_title="REPS heat index — maximum across all 21 members "
+                   "(single hottest member at each point, decoded directly from REPS's own product)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_wchill_p10": dict(
+        cat="REPS Extremes", name="Wind Chill (10th Percentile)",
+        recipe="reps_prob_bundle_stat",
+        reps_var="WCF-Prob", reps_level="AGL-2m",
+        reps_pdt=6, reps_match_key="percentileValue", reps_match_val=10,
+        cmap="t2m", units="degF", convert=_K_TO_F,
+        spc_title="REPS wind chill — 10th percentile across 21 members "
+                   "(reasonable worst-case cold, decoded directly from REPS's own product)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_t2m_p10": dict(
+        cat="REPS Extremes", name="2m Temperature (10th Percentile)",
+        recipe="reps_prob_bundle_stat",
+        reps_var="TMP-Prob", reps_level="AGL-2m",
+        reps_pdt=6, reps_match_key="percentileValue", reps_match_val=10,
+        cmap="t2m", units="degF", convert=_K_TO_F,
+        spc_title="REPS 2m temperature — 10th percentile across 21 members "
+                   "(reasonable worst-case cold/frost risk, decoded directly from REPS's own product)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_wind10m_p90": dict(
+        cat="REPS Extremes", name="10m Wind Speed (90th Percentile)",
+        recipe="reps_prob_bundle_stat",
+        reps_var="WIND-Prob", reps_level="AGL-10m",
+        reps_pdt=6, reps_match_key="percentileValue", reps_match_val=90,
+        cmap="wind_sfc", units="kt", convert=_MS_TO_KT,
+        spc_title="REPS 10m wind speed — 90th percentile across 21 members "
+                   "(reasonable worst-case wind, decoded directly from REPS's own product)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_wind10m_max": dict(
+        cat="REPS Extremes", name="10m Wind Speed (Ensemble Max)",
+        recipe="reps_prob_bundle_stat",
+        reps_var="WIND-Prob", reps_level="AGL-10m",
+        reps_pdt=2, reps_match_key="derivedForecast", reps_match_val=9,
+        cmap="wind_sfc", units="kt", convert=_MS_TO_KT,
+        spc_title="REPS 10m wind speed — maximum across all 21 members "
+                   "(single windiest member at each point, decoded directly from REPS's own product)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
 }
 
 

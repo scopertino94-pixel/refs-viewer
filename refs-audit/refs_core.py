@@ -3582,6 +3582,8 @@ class PlotJob:
             return self._reps_shear_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'reps_lapse_rate_mean':
             return self._reps_lapse_rate_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_prob_bundle_stat':
+            return self._reps_prob_bundle_stat(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4493,6 +4495,46 @@ class PlotJob:
             return None
         if result is None:
             print(f"[reps_lapse_rate_mean] {prod['name']} F{fhr:03d}: loader returned None",
+                  flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        if 'convert' in prod:
+            data = prod['convert'](data)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_prob_bundle_stat(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """One percentile or derived-stat field from a REPS TMP-Prob/
+        WIND-Prob/HEATX-Prob/WCF-Prob bundle -- see app/reps_core.py's
+        load_reps_prob_bundle_stat."""
+        import asyncio
+        from app import reps_core as reps
+
+        var = prod.get('reps_var')
+        level = prod.get('reps_level')
+        pdt = prod.get('reps_pdt')
+        match_key = prod.get('reps_match_key')
+        match_val = prod.get('reps_match_val')
+        if not var or not level or pdt is None or not match_key or match_val is None:
+            status_cb(f"{prod['name']}: malformed REPS product (missing reps_var/reps_level/"
+                      f"reps_pdt/reps_match_key/reps_match_val)")
+            return None
+
+        status_cb(f"Fetching REPS {var} F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_prob_bundle_stat(cache_dir, date_str, run, var, level, fhr,
+                                                 pdt, match_key, match_val))
+        except Exception as e:
+            import traceback
+            print(f"[reps_prob_bundle_stat] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_prob_bundle_stat] {prod['name']} F{fhr:03d}: loader returned None",
                   flush=True)
             status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
             return None

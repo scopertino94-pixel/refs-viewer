@@ -455,3 +455,60 @@ async def load_reps_lapse_rate_mean(
     with np.errstate(divide='ignore', invalid='ignore'):
         lapse = -(t_hi_m - t_lo_m) / dz_km
     return lapse, lat2d, lon2d
+
+
+def _decode_prob_bundle_stat_sync(path: Path, pdt: int, match_key: str, match_val):
+    """Blocking cfgrib decode of a single percentile or derived-stat
+    message from a REPS TMP-Prob/WIND-Prob/HEATX-Prob/WCF-Prob file --
+    run via asyncio.to_thread from callers.
+
+    These 4 files are a DIFFERENT, smaller bundle shape than the
+    precip-rate "-Prob" files (confirmed via direct eccodes message
+    inspection): only 9 messages -- 5 percentile messages
+    (productDefinitionTemplateNumber=6, percentileValue=10/25/50/75/90)
+    + 4 derived-stat messages (PDT=2, derivedForecast per WMO code table
+    4.7: 0=mean, 4=spread, 8=min, 9=max). NO threshold-exceedance
+    messages exist in this family -- "probability of extreme heat/cold/
+    wind" is not available the way precip-rate exceedance probability
+    is; percentile/mean/spread/min/max are the only things to decode.
+    """
+    import cfgrib
+
+    ds = cfgrib.open_dataset(str(path), filter_by_keys={
+        "productDefinitionTemplateNumber": pdt,
+        match_key: match_val,
+    })
+    varname = list(ds.data_vars)[0]
+    lat2d = ds.latitude.values
+    lon2d = ds.longitude.values
+    rs, cs = _crop_bbox(lat2d, lon2d)
+    data = ds[varname].values[rs, cs]
+    return data, lat2d[rs, cs], lon2d[rs, cs]
+
+
+async def load_reps_prob_bundle_stat(
+    cache_dir: Path, date: str, run: int, var: str, level: str, fhr: int,
+    pdt: int, match_key: str, match_val,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Decode one percentile or derived-stat field from a REPS
+    TMP-Prob/WIND-Prob/HEATX-Prob/WCF-Prob bundle. `var` is the file
+    token (e.g. "HEATX-Prob"); `pdt`/`match_key`/`match_val` select the
+    message -- pdt=6 + match_key='percentileValue' + match_val in
+    {10,25,50,75,90} for a percentile, or pdt=2 +
+    match_key='derivedForecast' + match_val in {0,4,8,9} for
+    mean/spread/min/max.
+    """
+    ckey = (date, run, var, pdt, match_key, match_val, fhr)
+    if ckey in _decoded_cache:
+        return _decoded_cache[ckey]
+
+    path = await ensure_reps_file_cached(cache_dir, date, run, var, level, fhr)
+    if path is None:
+        return None
+
+    result = await asyncio.to_thread(_decode_prob_bundle_stat_sync, path, pdt, match_key, match_val)
+
+    if len(_decoded_cache) >= _DECODED_CACHE_MAX:
+        _decoded_cache.pop(next(iter(_decoded_cache)))
+    _decoded_cache[ckey] = result
+    return result
