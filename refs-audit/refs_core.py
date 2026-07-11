@@ -4054,9 +4054,15 @@ class PlotJob:
             result = asyncio.run(
                 reps.load_reps_mean(cache_dir, date_str, run, var, level, fhr))
         except Exception as e:
+            import traceback
+            print(f"[reps_mean] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
             status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
             return None
         if result is None:
+            print(f"[reps_mean] {prod['name']} F{fhr:03d}: loader returned None "
+                  f"(file missing or crop matched no points)", flush=True)
             status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
             return None
         data, lats, lons = result
@@ -4085,9 +4091,15 @@ class PlotJob:
             result = asyncio.run(
                 reps.load_reps_wind_speed_mean(cache_dir, date_str, run, level, fhr))
         except Exception as e:
+            import traceback
+            print(f"[reps_wind_level_mean] {prod['name']} F{fhr:03d}: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
             status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
             return None
         if result is None:
+            print(f"[reps_wind_level_mean] {prod['name']} F{fhr:03d}: "
+                  f"loader returned None", flush=True)
             status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
             return None
         data, lats, lons = result

@@ -16,11 +16,14 @@ from pathlib import Path
 
 import httpx
 
-from .reps_data import DD_BASE
+from .reps_data import dd_base
 
 
 def reps_grib_url(date: str, run: int, var: str, level: str, fhr: int) -> str:
-    return (f"{DD_BASE}/{run:02d}/{fhr:03d}/"
+    # Dated path, not /today/ -- see reps_data.py's module docstring for
+    # why: /today/ rotates on the UTC calendar day, not per-cycle, so a
+    # request that worked a moment ago can 404 purely from a day rollover.
+    return (f"{dd_base(date)}/{run:02d}/{fhr:03d}/"
             f"{date}T{run:02d}Z_MSC_REPS_{var}_{level}_RLatLon0.09x0.09_PT{fhr:03d}H.grib2")
 
 
@@ -66,16 +69,19 @@ async def ensure_reps_file_cached(
             # loop) reusing it breaks. Cost of a fresh client per download
             # is negligible next to the download itself.
             async with httpx.AsyncClient(
-                timeout=httpx.Timeout(90.0, connect=10.0),
+                timeout=httpx.Timeout(90.0, connect=15.0),
                 follow_redirects=True,
             ) as http:
                 async with http.stream("GET", url) as r:
                     if r.status_code != 200:
+                        print(f"[reps_grib] {url} -> HTTP {r.status_code}",
+                              flush=True)
                         return None
                     with open(tmp, "wb") as f:
                         async for chunk in r.aiter_bytes(1 << 16):
                             f.write(chunk)
-        except httpx.HTTPError:
+        except httpx.HTTPError as e:
+            print(f"[reps_grib] {url} -> {type(e).__name__}: {e}", flush=True)
             tmp.unlink(missing_ok=True)
             return None
         tmp.replace(p)

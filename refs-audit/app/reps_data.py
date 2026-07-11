@@ -7,8 +7,21 @@ model from REFS/HREF -- different agency (ECCC not NOAA), different grid
 precip-type, soil, radiation -- no convective-allowing fields at all).
 
 REPS files live at:
-  https://dd.weather.gc.ca/today/ensemble/reps/10km/grib2/{run:02d}/{fhr:03d}/
+  https://dd.weather.gc.ca/{date:YYYYMMDD}/WXO-DD/ensemble/reps/10km/grib2/{run:02d}/{fhr:03d}/
      {date}T{run:02d}Z_MSC_REPS_{var}_{level}_RLatLon0.09x0.09_PT{fhr:03d}H.grib2
+
+IMPORTANT gotcha (found the hard way, mid-session, after burning a chunk of
+a debugging pass chasing a phantom "network bug"): dd.weather.gc.ca ALSO
+exposes a `/today/ensemble/...` shortcut path with no date segment, which
+looks tempting to use since it needs no date math -- but it's a rolling
+window keyed to the **UTC calendar day**, not to any specific cycle. It
+silently drops a cycle's later forecast hours (then the whole cycle) as
+soon as UTC rolls over to the next day, even though the cycle itself is
+still "recent" in wall-clock or local-time terms. A REPS request that
+looks identical from one minute to the next can 404 purely because the
+UTC day changed underneath it. **Always use the dated path
+`/{date}/WXO-DD/ensemble/...` instead** -- it's stable for as long as
+ECCC retains that date's data at all, not just until midnight UTC.
 
 Unlike REFS/HREF, there are no per-member files and no .idx sidecars --
 each file bundles all 21 ensemble members (1 control + 20 perturbed) as
@@ -22,10 +35,16 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-DD_BASE = "https://dd.weather.gc.ca/today/ensemble/reps/10km/grib2"
+DD_HOST = "https://dd.weather.gc.ca"
 REPS_RUNS = (0, 6, 12, 18)
 MAX_FHOUR = 72
 FHOUR_STEP = 3
+
+
+def dd_base(date: str) -> str:
+    """Dated (non-rotating) base path for a REPS cycle's files. See the
+    module docstring's IMPORTANT note on why this is dated, not /today/."""
+    return f"{DD_HOST}/{date}/WXO-DD/ensemble/reps/10km/grib2"
 
 _client: httpx.AsyncClient | None = None
 
@@ -51,7 +70,7 @@ _PROBE_VAR = "TMP_AGL-2m"
 
 
 def _probe_url(date: str, run: int, fhr: int = 6) -> str:
-    return (f"{DD_BASE}/{run:02d}/{fhr:03d}/"
+    return (f"{dd_base(date)}/{run:02d}/{fhr:03d}/"
             f"{date}T{run:02d}Z_MSC_REPS_{_PROBE_VAR}_RLatLon0.09x0.09_PT{fhr:03d}H.grib2")
 
 
@@ -70,9 +89,8 @@ _CYCLES_TTL = 300  # REPS updates 4x/day -- cache longer than REFS/HREF's churn
 async def list_recent_cycles(n_back: int = 4) -> list[dict]:
     """Most recent n available REPS cycles (HEAD-probed). Cached for 300 s.
 
-    ECCC's /today/ path typically only retains the most recent cycle or two
-    (unlike REFS/HREF's rolling multi-day window), so this may return fewer
-    than n_back even when the probe logic is correct.
+    Uses the dated path (dd_base(date)), not /today/, so results are
+    stable across a UTC day rollover -- see the module docstring.
     """
     global _cycles_cache
     now = time.monotonic()
