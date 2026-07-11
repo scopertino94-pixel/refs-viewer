@@ -512,3 +512,121 @@ async def load_reps_prob_bundle_stat(
         _decoded_cache.pop(next(iter(_decoded_cache)))
     _decoded_cache[ckey] = result
     return result
+
+
+def _grid_metrics(lat2d: np.ndarray, lon2d: np.ndarray):
+    """Local grid-step distances (meters) in the array's row (y) and
+    column (x) index directions, computed directly from the actual
+    lat/lon arrays via central differences.
+
+    This is deliberately NOT the "assume a uniform dlat/dlon sampled
+    from one grid-point pair" shortcut refs_core.py's REFS/HREF
+    _divergence helper uses -- that's fine for REFS/HREF's own grid,
+    but REPS's grid is rotated-pole (see module docstring): after
+    cropping to a real-world bounding box, a row/col index step does
+    NOT correspond to a fixed true lat/lon step size across the whole
+    cropped domain, and near the crop edges a "col" step isn't even
+    purely east-west. Computing dx/dy from the full 2D coordinate
+    arrays at every point is correct regardless of that distortion.
+
+    Returns (dx, dy), each shaped like lat2d.
+    """
+    R = 6371000.0
+    lat_r = np.deg2rad(lat2d)
+    lon_r = np.deg2rad(lon2d)
+    dlat_dy, dlat_dx = np.gradient(lat_r)
+    dlon_dy, dlon_dx = np.gradient(lon_r)
+    dy = R * np.sqrt(dlat_dy**2 + (dlon_dy * np.cos(lat_r))**2)
+    dx = R * np.sqrt(dlat_dx**2 + (dlon_dx * np.cos(lat_r))**2)
+    return dx, dy
+
+
+async def load_reps_divergence_mean(
+    cache_dir: Path, date: str, run: int, level: str, fhr: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Horizontal divergence (du/dx + dv/dy), x10^-5/s, at a pressure
+    level. Divergence is a LINEAR operator on u,v, so computing it from
+    the ensemble-MEAN wind field is mathematically exact -- unlike heat
+    index/wind chill, there's no per-member-first cost/precision
+    tradeoff here; averaging first changes nothing."""
+    u = await load_reps_mean(cache_dir, date, run, "UGRD", level, fhr)
+    v = await load_reps_mean(cache_dir, date, run, "VGRD", level, fhr)
+    if u is None or v is None:
+        return None
+    u_m, lat2d, lon2d = u
+    v_m, _, _ = v
+    dx, dy = _grid_metrics(lat2d, lon2d)
+    du_dx = np.gradient(u_m, axis=1) / dx
+    dv_dy = np.gradient(v_m, axis=0) / dy
+    div = (du_dx + dv_dy) * 1e5
+    return div, lat2d, lon2d
+
+
+async def load_reps_vorticity_mean(
+    cache_dir: Path, date: str, run: int, level: str, fhr: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Absolute vorticity (relative + planetary), x10^-5/s, at a
+    pressure level. Relative vorticity (dv/dx - du/dy) is linear in
+    u,v -- same exactness argument as divergence above. Planetary
+    vorticity f=2*Omega*sin(lat) depends only on latitude, not the
+    ensemble at all."""
+    u = await load_reps_mean(cache_dir, date, run, "UGRD", level, fhr)
+    v = await load_reps_mean(cache_dir, date, run, "VGRD", level, fhr)
+    if u is None or v is None:
+        return None
+    u_m, lat2d, lon2d = u
+    v_m, _, _ = v
+    dx, dy = _grid_metrics(lat2d, lon2d)
+    dv_dx = np.gradient(v_m, axis=1) / dx
+    du_dy = np.gradient(u_m, axis=0) / dy
+    f = 2.0 * 7.2921e-5 * np.sin(np.deg2rad(lat2d))
+    abs_vort = (dv_dx - du_dy + f) * 1e5
+    return abs_vort, lat2d, lon2d
+
+
+async def load_reps_temp_advection_mean(
+    cache_dir: Path, date: str, run: int, level: str, fhr: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Horizontal temperature advection -(u*dT/dx + v*dT/dy), in K per
+    3 hours (matches the usual synoptic advection-map convention), at
+    a pressure level, from ensemble-MEAN T/U/V.
+
+    Computed mean-first: unlike divergence/vorticity above, advection
+    is a PRODUCT of wind and a temperature gradient (bilinear, not
+    linear), so mean-first is an approximation, not an exact identity
+    -- same cost/precision tradeoff already accepted for freezing level
+    and lapse rate (see those docstrings). Per-member would cost 21x
+    the fetch/decode for a refinement that matters far less here than
+    it does for heat index/wind chill's much more sharply nonlinear
+    formulas.
+    """
+    u = await load_reps_mean(cache_dir, date, run, "UGRD", level, fhr)
+    v = await load_reps_mean(cache_dir, date, run, "VGRD", level, fhr)
+    t = await load_reps_mean(cache_dir, date, run, "TMP", level, fhr)
+    if u is None or v is None or t is None:
+        return None
+    u_m, lat2d, lon2d = u
+    v_m, _, _ = v
+    t_m, _, _ = t
+    dx, dy = _grid_metrics(lat2d, lon2d)
+    dT_dx = np.gradient(t_m, axis=1) / dx
+    dT_dy = np.gradient(t_m, axis=0) / dy
+    advection_per_s = -(u_m * dT_dx + v_m * dT_dy)
+    advection_per_3h = advection_per_s * 3600.0 * 3.0
+    return advection_per_3h, lat2d, lon2d
+
+
+async def load_reps_thickness_mean(
+    cache_dir: Path, date: str, run: int, level_lo: str, level_hi: str, fhr: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Thickness (dam) between two pressure levels, from ensemble-mean
+    heights -- e.g. 1000-500mb thickness, the classic rain/snow-line
+    field (540 dam is the standard threshold)."""
+    h_lo = await load_reps_mean(cache_dir, date, run, "HGT", level_lo, fhr)
+    h_hi = await load_reps_mean(cache_dir, date, run, "HGT", level_hi, fhr)
+    if h_lo is None or h_hi is None:
+        return None
+    h_lo_m, lat2d, lon2d = h_lo
+    h_hi_m, _, _ = h_hi
+    thickness_dam = (h_hi_m - h_lo_m) / 10.0
+    return thickness_dam, lat2d, lon2d

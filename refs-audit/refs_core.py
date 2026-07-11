@@ -688,6 +688,16 @@ def cmap_vorticity():
     lv = [10, 12, 14, 16, 20, 25, 30, 40, 50, 60]
     return _cmap(cs, lv, 'vort')
 
+# Horizontal temperature advection (K per 3h). Diverging: blue = cold-air
+# advection (CAA), red = warm-air advection (WAA) -- standard synoptic
+# convention. A few degrees per 3h is already a strong advective signal
+# at 850 mb, so the ramp is deliberately tight around zero.
+def cmap_temp_adv():
+    cs = ['#0a005a','#1f55e8','#7fbfff','#cfe4ff','#f4f4f4',
+          '#ffd9b3','#ff7a3c','#d63a1f','#7a0000']
+    lv = [-6, -4, -2, -1, 1, 2, 4, 6]
+    return _cmap(cs, lv, 'temp_adv')
+
 def cmap_wind_sfc():
     # Surface / 10-m wind speed (kt). Scaled for boundary-layer winds — an
     # ensemble mean rarely exceeds ~40-50 kt — not the 30-180 kt jet ramp.
@@ -3008,6 +3018,142 @@ class PlotManager:
         return fig
 
     # -------------------------------------------------------------------
+    # REPS synoptic-style renders. These mirror wind_level/vort_level's
+    # visual design (shaded field + height contours + barbs, matching
+    # REFS/HREF's own look) but take a PRE-COMPUTED divergence/vorticity
+    # field instead of computing it internally -- wind_level/vort_level's
+    # own _divergence-style math assumes a uniform dlat/dlon sampled from
+    # one grid-point pair, which is fine for REFS/HREF's grid but wrong
+    # for REPS's rotated-pole grid (see app/reps_core.py's _grid_metrics).
+    def reps_wind_level_synoptic(self, u, v, gh, div, lats, lons, prod,
+                                 region, run_dt, fhr):
+        """REPS 250-mb-style: shaded wind speed + height contours +
+        divergence contour overlay + barbs."""
+        fig, ax = self._setup(region)
+        cm, norm, lv = _CMAPS[prod['cmap']]()
+        spd_kt = np.sqrt(u**2 + v**2) * 1.94384
+        hgt_dam = gh / 10.0
+
+        if lats.ndim == 1:
+            lons2d, lats2d = np.meshgrid(lons, lats)
+        else:
+            lons2d, lats2d = lons, lats
+
+        masked = np.ma.masked_less(spd_kt, lv[0])
+        cf = ax.pcolormesh(lons2d, lats2d, masked, cmap=cm, norm=norm,
+                           transform=ccrs.PlateCarree(), zorder=3,
+                           shading='nearest', antialiased=False)
+
+        if HAS_SCIPY:
+            hgt_dam = gaussian_filter(hgt_dam, sigma=1.5)
+        ci = 12
+        clev = np.arange(np.floor(np.nanmin(hgt_dam)/ci)*ci,
+                         np.ceil(np.nanmax(hgt_dam)/ci)*ci + ci, ci)
+        cs = ax.contour(lons2d, lats2d, hgt_dam, levels=clev,
+                        colors=self.theme.get('cnt_h', '#3a2a10'), linewidths=1.3,
+                        transform=ccrs.PlateCarree(), zorder=6)
+        lbls = ax.clabel(cs, inline=True, fontsize=9, fmt='%1.0f')
+        self._halo(cs, lbls)
+
+        div_s = gaussian_filter(div, sigma=2.5) if HAS_SCIPY else div
+        _div_levs_pos = [8, 16, 24, 32]
+        if np.nanmax(div_s) >= _div_levs_pos[0]:
+            _divc = ax.contour(lons2d, lats2d, div_s, levels=_div_levs_pos,
+                       colors=self._ink('#cc2200', '#ff6a4a'), linewidths=1.1,
+                       linestyles='solid', transform=ccrs.PlateCarree(), zorder=8)
+            self._halo(_divc, lw=3.0)
+
+        skip = 45
+        ax.barbs(lons2d[::skip, ::skip], lats2d[::skip, ::skip],
+                 u[::skip, ::skip] * 1.94384, v[::skip, ::skip] * 1.94384,
+                 transform=ccrs.PlateCarree(), length=5.2, linewidth=0.55,
+                 zorder=7)
+
+        self._colorbar(fig, cf, lv, 'kt', extend='max')
+        self._header(fig, prod, run_dt, fhr)
+        return fig
+
+    def reps_vort_level(self, u, v, gh, abs_vort, lats, lons, prod,
+                        region, run_dt, fhr):
+        """REPS 500-mb-style: shaded absolute vorticity + height
+        contours + barbs."""
+        fig, ax = self._setup(region)
+
+        if lats.ndim == 1:
+            lons2d, lats2d = np.meshgrid(lons, lats)
+        else:
+            lons2d, lats2d = lons, lats
+
+        vort_s = gaussian_filter(abs_vort, sigma=1.5) if HAS_SCIPY else abs_vort
+        cm, norm, lv = _CMAPS['vort']()
+        masked = np.ma.masked_less(vort_s, lv[0])
+        cf = ax.pcolormesh(lons2d, lats2d, masked, cmap=cm, norm=norm,
+                           transform=ccrs.PlateCarree(), zorder=3,
+                           shading='nearest', antialiased=False)
+
+        hgt_dam = gh / 10.0
+        if HAS_SCIPY:
+            hgt_dam = gaussian_filter(hgt_dam, sigma=1.5)
+        ci = 6
+        clev = np.arange(np.floor(np.nanmin(hgt_dam)/ci)*ci,
+                         np.ceil(np.nanmax(hgt_dam)/ci)*ci + ci, ci)
+        cs = ax.contour(lons2d, lats2d, hgt_dam, levels=clev,
+                        colors=self.theme.get('cnt_h', '#1a1a1a'), linewidths=1.3,
+                        transform=ccrs.PlateCarree(), zorder=6)
+        lbls = ax.clabel(cs, inline=True, fontsize=9, fmt='%1.0f')
+        self._halo(cs, lbls)
+
+        skip = 45
+        ax.barbs(lons2d[::skip, ::skip], lats2d[::skip, ::skip],
+                 u[::skip, ::skip] * 1.94384, v[::skip, ::skip] * 1.94384,
+                 transform=ccrs.PlateCarree(), length=5.2, linewidth=0.55,
+                 zorder=7)
+
+        self._colorbar(fig, cf, lv, '×10⁻⁵ s⁻¹', extend='max')
+        self._header(fig, prod, run_dt, fhr)
+        return fig
+
+    def reps_temp_advection_plot(self, adv, gh, u, v, lats, lons, prod,
+                                 region, run_dt, fhr):
+        """REPS temperature-advection synoptic plot: shaded advection
+        (diverging, blue=cold-air/red=warm-air advection) + height
+        contours + barbs."""
+        fig, ax = self._setup(region)
+        cm, norm, lv = _CMAPS[prod['cmap']]()
+
+        if lats.ndim == 1:
+            lons2d, lats2d = np.meshgrid(lons, lats)
+        else:
+            lons2d, lats2d = lons, lats
+
+        adv_s = gaussian_filter(adv, sigma=2.0) if HAS_SCIPY else adv
+        cf = ax.pcolormesh(lons2d, lats2d, adv_s, cmap=cm, norm=norm,
+                           transform=ccrs.PlateCarree(), zorder=3,
+                           shading='nearest', antialiased=False)
+
+        hgt_dam = gh / 10.0
+        if HAS_SCIPY:
+            hgt_dam = gaussian_filter(hgt_dam, sigma=1.5)
+        ci = 3
+        clev = np.arange(np.floor(np.nanmin(hgt_dam)/ci)*ci,
+                         np.ceil(np.nanmax(hgt_dam)/ci)*ci + ci, ci)
+        cs = ax.contour(lons2d, lats2d, hgt_dam, levels=clev,
+                        colors=self.theme.get('cnt_h', '#1a1a1a'), linewidths=1.3,
+                        transform=ccrs.PlateCarree(), zorder=6)
+        lbls = ax.clabel(cs, inline=True, fontsize=9, fmt='%1.0f')
+        self._halo(cs, lbls)
+
+        skip = 45
+        ax.barbs(lons2d[::skip, ::skip], lats2d[::skip, ::skip],
+                 u[::skip, ::skip] * 1.94384, v[::skip, ::skip] * 1.94384,
+                 transform=ccrs.PlateCarree(), length=5.2, linewidth=0.55,
+                 zorder=7)
+
+        self._colorbar(fig, cf, lv, 'K/3h', extend='both')
+        self._header(fig, prod, run_dt, fhr)
+        return fig
+
+    # -------------------------------------------------------------------
     def ptype_mslp(self, crain, csnow, cfrzr, cicep, mslp_pa,
                    lats, lons, prod, region, run_dt, fhr):
         """Precipitation type (categorical shading) + MSLP contours."""
@@ -3462,6 +3608,7 @@ _CMAPS = {
     'ir': cmap_ir_satellite, 'wfire': cmap_wfirepot,
     'sptemp2m': cmap_spread_temp2m, 'spwind10m': cmap_spread_wind10m,
     'ptype_dom': cmap_ptype_dominant, 'frzlvl': cmap_freezing_level,
+    'temp_adv': cmap_temp_adv,
 }
 
 # =============================================================================
@@ -3584,6 +3731,14 @@ class PlotJob:
             return self._reps_lapse_rate_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'reps_prob_bundle_stat':
             return self._reps_prob_bundle_stat(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_ptype_thickness':
+            return self._reps_ptype_thickness(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_div250_synoptic':
+            return self._reps_div250_synoptic(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_vort500':
+            return self._reps_vort500(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_temp_advection':
+            return self._reps_temp_advection(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4094,6 +4249,30 @@ class PlotJob:
         return self.pm.shaded(total, lats, lons, prod, region, run_dt, fhr,
                               overlays=overlays)
 
+    def _reps_mslp_overlay(self, date_str, run, fhr, status_cb):
+        """Shared MSLP contour overlay for REPS surface-level products --
+        fetches the ensemble-mean MSLP field and returns an overlay dict
+        ready for self.pm.shaded(..., overlays=[...]) (Tidbits-style
+        solid isobars, theme-aware), or None if unavailable. Opt-in per
+        product via prod['mslp_overlay']=True."""
+        import asyncio
+        from app import reps_core as reps
+
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_mean(cache_dir, date_str, run, "PRMSL", "MSL", fhr))
+        except Exception as e:
+            print(f"[reps_mslp_overlay] F{fhr:03d}: {type(e).__name__}: {e}", flush=True)
+            return None
+        if result is None:
+            return None
+        mslp_pa, lats, lons = result
+        mslp_hpa = mslp_pa / 100.0
+        return dict(data=mslp_hpa, lats=lats, lons=lons,
+                    levels=np.arange(940, 1060, 4), linewidths=0.9,
+                    colors={'light': '#1a1a1a', 'dark': '#e8e8e8'})
+
     def _reps_mean(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """Environment Canada REPS ensemble mean.
 
@@ -4136,7 +4315,12 @@ class PlotJob:
         data, lats, lons = result
         if 'convert' in prod:
             data = prod['convert'](data)
-        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+        overlays = []
+        if prod.get('mslp_overlay'):
+            ov = self._reps_mslp_overlay(date_str, run, fhr, status_cb)
+            if ov:
+                overlays.append(ov)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr, overlays=overlays)
 
     def _reps_wind_level_mean(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS ensemble-mean wind SPEED at a pressure level (500/250 mb
@@ -4239,7 +4423,12 @@ class PlotJob:
         data, lats, lons = result
         if 'convert' in prod:
             data = prod['convert'](data)
-        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+        overlays = []
+        if prod.get('mslp_overlay'):
+            ov = self._reps_mslp_overlay(date_str, run, fhr, status_cb)
+            if ov:
+                overlays.append(ov)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr, overlays=overlays)
 
     def _reps_wind_chill_mean(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS ensemble-mean wind chill (2-m temp + 10-m wind, computed
@@ -4268,7 +4457,12 @@ class PlotJob:
         data, lats, lons = result
         if 'convert' in prod:
             data = prod['convert'](data)
-        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+        overlays = []
+        if prod.get('mslp_overlay'):
+            ov = self._reps_mslp_overlay(date_str, run, fhr, status_cb)
+            if ov:
+                overlays.append(ov)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr, overlays=overlays)
 
     def _reps_ptype_dominant(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS "dominant precip type" composite -- categorical winner
@@ -4297,7 +4491,166 @@ class PlotJob:
             status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
             return None
         data, lats, lons = result
-        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+        overlays = []
+        if prod.get('mslp_overlay'):
+            ov = self._reps_mslp_overlay(date_str, run, fhr, status_cb)
+            if ov:
+                overlays.append(ov)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr, overlays=overlays)
+
+    def _reps_ptype_thickness(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS dominant-precip-type shading + 1000-500mb thickness
+        contours -- the classic rain/snow-line context (540 dam
+        highlighted separately, matching the standard SPC/Tidbits
+        convention) laid over the same categorical field as
+        reps_ptype_dominant."""
+        import asyncio
+        from app import reps_core as reps
+
+        status_cb(f"Fetching REPS dominant precip type + thickness F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            ptype_result = asyncio.run(
+                reps.load_reps_dominant_ptype(cache_dir, date_str, run, fhr))
+            thickness_result = asyncio.run(
+                reps.load_reps_thickness_mean(cache_dir, date_str, run,
+                                              "ISBL-1000", "ISBL-0500", fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_ptype_thickness] {prod['name']} F{fhr:03d}: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if ptype_result is None or thickness_result is None:
+            print(f"[reps_ptype_thickness] {prod['name']} F{fhr:03d}: "
+                  f"loader returned None", flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = ptype_result
+        thickness, t_lats, t_lons = thickness_result
+
+        overlays = [
+            dict(data=thickness, lats=t_lats, lons=t_lons,
+                 levels=[lv for lv in range(480, 601, 6) if lv != 540],
+                 linewidths=0.8, colors={'light': '#1a1a1a', 'dark': '#e8e8e8'}),
+            dict(data=thickness, lats=t_lats, lons=t_lons,
+                 levels=[540], linewidths=1.8, linestyles='dashed',
+                 colors={'light': '#0033bf', 'dark': '#5b9bff'}),
+        ]
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr, overlays=overlays)
+
+    def _reps_div250_synoptic(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS 250-mb-style synoptic plot: wind speed + heights +
+        divergence contours + barbs, matching REFS/HREF's own look.
+        See app/reps_core.py's load_reps_divergence_mean for why the
+        rotated-grid-safe divergence math differs from REFS's uniform-
+        grid _divergence helper."""
+        import asyncio
+        from app import reps_core as reps
+
+        level = prod.get('reps_level')
+        if not level:
+            status_cb(f"{prod['name']}: malformed REPS product (missing reps_level)")
+            return None
+
+        status_cb(f"Fetching REPS 250mb synoptic F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            u_result = asyncio.run(reps.load_reps_mean(cache_dir, date_str, run, "UGRD", level, fhr))
+            v_result = asyncio.run(reps.load_reps_mean(cache_dir, date_str, run, "VGRD", level, fhr))
+            h_result = asyncio.run(reps.load_reps_mean(cache_dir, date_str, run, "HGT", level, fhr))
+            div_result = asyncio.run(reps.load_reps_divergence_mean(cache_dir, date_str, run, level, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_div250_synoptic] {prod['name']} F{fhr:03d}: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if u_result is None or v_result is None or h_result is None or div_result is None:
+            print(f"[reps_div250_synoptic] {prod['name']} F{fhr:03d}: "
+                  f"loader returned None", flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        u, lats, lons = u_result
+        v, _, _ = v_result
+        gh, _, _ = h_result
+        div, _, _ = div_result
+        return self.pm.reps_wind_level_synoptic(u, v, gh, div, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_vort500(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS 500-mb-style synoptic plot: absolute vorticity + heights
+        + barbs, matching REFS/HREF's own look. See app/reps_core.py's
+        load_reps_vorticity_mean."""
+        import asyncio
+        from app import reps_core as reps
+
+        level = prod.get('reps_level')
+        if not level:
+            status_cb(f"{prod['name']}: malformed REPS product (missing reps_level)")
+            return None
+
+        status_cb(f"Fetching REPS 500mb vorticity F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            u_result = asyncio.run(reps.load_reps_mean(cache_dir, date_str, run, "UGRD", level, fhr))
+            v_result = asyncio.run(reps.load_reps_mean(cache_dir, date_str, run, "VGRD", level, fhr))
+            h_result = asyncio.run(reps.load_reps_mean(cache_dir, date_str, run, "HGT", level, fhr))
+            vort_result = asyncio.run(reps.load_reps_vorticity_mean(cache_dir, date_str, run, level, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_vort500] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if u_result is None or v_result is None or h_result is None or vort_result is None:
+            print(f"[reps_vort500] {prod['name']} F{fhr:03d}: loader returned None",
+                  flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        u, lats, lons = u_result
+        v, _, _ = v_result
+        gh, _, _ = h_result
+        abs_vort, _, _ = vort_result
+        return self.pm.reps_vort_level(u, v, gh, abs_vort, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_temp_advection(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS temperature-advection synoptic plot at a pressure level
+        (default 850mb). See app/reps_core.py's load_reps_temp_advection_mean."""
+        import asyncio
+        from app import reps_core as reps
+
+        level = prod.get('reps_level')
+        if not level:
+            status_cb(f"{prod['name']}: malformed REPS product (missing reps_level)")
+            return None
+
+        status_cb(f"Fetching REPS temperature advection {level} F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            u_result = asyncio.run(reps.load_reps_mean(cache_dir, date_str, run, "UGRD", level, fhr))
+            v_result = asyncio.run(reps.load_reps_mean(cache_dir, date_str, run, "VGRD", level, fhr))
+            h_result = asyncio.run(reps.load_reps_mean(cache_dir, date_str, run, "HGT", level, fhr))
+            adv_result = asyncio.run(reps.load_reps_temp_advection_mean(cache_dir, date_str, run, level, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_temp_advection] {prod['name']} F{fhr:03d}: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if u_result is None or v_result is None or h_result is None or adv_result is None:
+            print(f"[reps_temp_advection] {prod['name']} F{fhr:03d}: loader returned None",
+                  flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        u, lats, lons = u_result
+        v, _, _ = v_result
+        gh, _, _ = h_result
+        adv, _, _ = adv_result
+        return self.pm.reps_temp_advection_plot(adv, gh, u, v, lats, lons, prod, region, run_dt, fhr)
 
     def _reps_freezing_level(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS 0-degC isotherm height, interpolated from ensemble-mean

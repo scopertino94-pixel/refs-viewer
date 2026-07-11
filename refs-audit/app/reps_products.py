@@ -36,30 +36,30 @@ REPS_FHR_STEP = 3
 PRODUCTS = {
     "reps_t2m_mean": dict(
         cat="REPS", name="2m Temperature (Mean)", recipe="reps_mean",
-        reps_var="TMP", reps_level="AGL-2m",
+        reps_var="TMP", reps_level="AGL-2m", mslp_overlay=True,
         cmap="t2m", units="degF", convert=_K_TO_F,
-        spc_title="REPS 2m temperature — 21-member ensemble mean",
+        spc_title="REPS 2m temperature — 21-member ensemble mean, MSLP contours",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
     "reps_rh2m_mean": dict(
         cat="REPS", name="2m Relative Humidity (Mean)", recipe="reps_mean",
-        reps_var="RH", reps_level="AGL-2m",
+        reps_var="RH", reps_level="AGL-2m", mslp_overlay=True,
         cmap="rh", units="%",
-        spc_title="REPS 2m relative humidity — 21-member ensemble mean",
+        spc_title="REPS 2m relative humidity — 21-member ensemble mean, MSLP contours",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
     "reps_wind10m_mean": dict(
         cat="REPS", name="10m Wind Speed (Mean)", recipe="reps_mean",
-        reps_var="WIND", reps_level="AGL-10m",
+        reps_var="WIND", reps_level="AGL-10m", mslp_overlay=True,
         cmap="wind_sfc", units="kt", convert=_MS_TO_KT,
-        spc_title="REPS 10m wind speed — 21-member ensemble mean",
+        spc_title="REPS 10m wind speed — 21-member ensemble mean, MSLP contours",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
     "reps_mslp_mean": dict(
         cat="REPS", name="MSLP (Mean)", recipe="reps_mean",
-        reps_var="PRMSL", reps_level="MSL",
+        reps_var="PRMSL", reps_level="MSL", mslp_overlay=True,
         cmap="mslp", units="hPa", convert=_PA_TO_HPA,
-        spc_title="REPS mean sea-level pressure — 21-member ensemble mean",
+        spc_title="REPS mean sea-level pressure — 21-member ensemble mean, contoured",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
     # ---- v1.5: pressure-level / soil / cloud additions ----------------
@@ -115,14 +115,14 @@ PRODUCTS = {
     # ---- v2: creative derived/spread/precip-type products -------------
     "reps_heat_index_mean": dict(
         cat="REPS Derived", name="Heat Index (Mean)", recipe="reps_heat_index_mean",
-        cmap="t2m", units="degF",
-        spc_title="REPS heat index — 21-member ensemble mean (per-member Rothfusz, then averaged)",
+        cmap="t2m", units="degF", mslp_overlay=True,
+        spc_title="REPS heat index — 21-member ensemble mean (per-member Rothfusz, then averaged), MSLP contours",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
     "reps_wind_chill_mean": dict(
         cat="REPS Derived", name="Wind Chill (Mean)", recipe="reps_wind_chill_mean",
-        cmap="t2m", units="degF",
-        spc_title="REPS wind chill — 21-member ensemble mean (per-member NWS formula, then averaged)",
+        cmap="t2m", units="degF", mslp_overlay=True,
+        spc_title="REPS wind chill — 21-member ensemble mean (per-member NWS formula, then averaged), MSLP contours",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
     "reps_freezing_level": dict(
@@ -133,10 +133,19 @@ PRODUCTS = {
     ),
     "reps_ptype_dominant": dict(
         cat="REPS Precip Type", name="Dominant Precip Type", recipe="reps_ptype_dominant",
+        cmap="ptype_dom", units="", mslp_overlay=True,
+        cbar_tick_positions=[0.5, 1.5, 2.5, 3.5],
+        cbar_tick_labels=["Rain", "Snow", "Ice Pellets", "Frz Rain"],
+        spc_title="REPS dominant precipitation type — winner among ensemble-mean rain/snow/ice pellets/freezing rain accumulation, MSLP contours",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_ptype_thickness": dict(
+        cat="REPS Precip Type", name="Precip Type + Thickness", recipe="reps_ptype_thickness",
         cmap="ptype_dom", units="",
         cbar_tick_positions=[0.5, 1.5, 2.5, 3.5],
         cbar_tick_labels=["Rain", "Snow", "Ice Pellets", "Frz Rain"],
-        spc_title="REPS dominant precipitation type — winner among ensemble-mean rain/snow/ice pellets/freezing rain accumulation",
+        spc_title="REPS dominant precipitation type with 1000-500mb thickness contours "
+                   "(540 dam highlighted, classic rain/snow-line context)",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
     "reps_spread_t2m": dict(
@@ -289,6 +298,34 @@ PRODUCTS = {
         cmap="wind_sfc", units="kt", convert=_MS_TO_KT,
         spc_title="REPS 10m wind speed — maximum across all 21 members "
                    "(single windiest member at each point, decoded directly from REPS's own product)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    # ---- v5: synoptic-style plots matching REFS/HREF's own look -------
+    # (shaded field + height contours + barbs). REPS's grid is rotated-
+    # pole, so the divergence/vorticity/advection math is REPS-specific
+    # (app/reps_core.py's _grid_metrics), not a reuse of REFS's own
+    # uniform-grid _divergence helper.
+    "reps_div250_synoptic": dict(
+        cat="REPS Synoptic", name="250mb Wind + Heights + Divergence",
+        recipe="reps_div250_synoptic", reps_level="ISBL-0250",
+        cmap="wind250", units="kt",
+        spc_title="REPS 250-mb wind speed (shaded), heights (dam), divergence contours "
+                   "(x10-5/s), ensemble mean",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_vort500_synoptic": dict(
+        cat="REPS Synoptic", name="500mb Absolute Vorticity + Heights",
+        recipe="reps_vort500", reps_level="ISBL-0500",
+        cmap="vort", units="x10-5/s",
+        spc_title="REPS 500-mb absolute vorticity (shaded), heights (dam), wind barbs, ensemble mean",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_temp_adv850": dict(
+        cat="REPS Synoptic", name="850mb Temperature Advection",
+        recipe="reps_temp_advection", reps_level="ISBL-0850",
+        cmap="temp_adv", units="K/3h",
+        spc_title="REPS 850-mb temperature advection (shaded, blue=cold/red=warm-air "
+                   "advection), heights (dam), wind barbs, ensemble mean",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
 }

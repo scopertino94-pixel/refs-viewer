@@ -68,6 +68,7 @@ CATEGORY_TO_TAB = {
     "REPS Flooding":               "REPS",
     "REPS Severe Proxy":           "REPS",
     "REPS Extremes":               "REPS",
+    "REPS Synoptic":               "REPS",
 }
 
 # A few products move into Winter / Fire when their name implies it.
