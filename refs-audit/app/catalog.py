@@ -61,6 +61,9 @@ CATEGORY_TO_TAB = {
     "Satellite (Simulated)":       "Storm Attributes",
     "Fire Weather":                "Fire",
     "REPS":                        "REPS",
+    "REPS Derived":                "REPS",
+    "REPS Spread":                 "REPS",
+    "REPS Precip Type":            "REPS",
 }
 
 # A few products move into Winter / Fire when their name implies it.

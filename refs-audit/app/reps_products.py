@@ -24,6 +24,10 @@ _MS_TO_KT = lambda ms: ms * 1.94384              # noqa: E731
 _PA_TO_HPA = lambda pa: pa / 100.0               # noqa: E731
 _M_TO_DAM = lambda m: m / 10.0                   # noqa: E731 -- geopotential height, decameters
 _FRAC_TO_PCT = lambda f: f * 100.0               # noqa: E731 -- volumetric soil moisture 0-1 -> %
+# Spread (std-dev) conversions are DELTAS, not absolute values -- a Kelvin
+# std-dev converts to a Fahrenheit std-dev by scaling only (no +32/-273.15
+# offset, which would be meaningless applied to a spread rather than a value).
+_K_TO_F_DELTA = lambda k: k * 9.0 / 5.0           # noqa: E731
 
 REPS_MAX_FHOUR = 72
 REPS_FHR_STEP = 3
@@ -105,6 +109,47 @@ PRODUCTS = {
         reps_var="TCDC", reps_level="SFC",
         cmap="clouds", units="%",
         spc_title="REPS total cloud cover — 21-member ensemble mean",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    # ---- v2: creative derived/spread/precip-type products -------------
+    "reps_heat_index_mean": dict(
+        cat="REPS Derived", name="Heat Index (Mean)", recipe="reps_heat_index_mean",
+        cmap="t2m", units="degF",
+        spc_title="REPS heat index — 21-member ensemble mean (per-member Rothfusz, then averaged)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_wind_chill_mean": dict(
+        cat="REPS Derived", name="Wind Chill (Mean)", recipe="reps_wind_chill_mean",
+        cmap="t2m", units="degF",
+        spc_title="REPS wind chill — 21-member ensemble mean (per-member NWS formula, then averaged)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_freezing_level": dict(
+        cat="REPS Derived", name="Freezing Level (0°C Height)", recipe="reps_freezing_level",
+        cmap="frzlvl", units="m",
+        spc_title="REPS freezing level — height of 0°C isotherm from ensemble-mean T/Z profile",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_ptype_dominant": dict(
+        cat="REPS Precip Type", name="Dominant Precip Type", recipe="reps_ptype_dominant",
+        cmap="ptype_dom", units="",
+        cbar_tick_positions=[0.5, 1.5, 2.5, 3.5],
+        cbar_tick_labels=["Rain", "Snow", "Ice Pellets", "Frz Rain"],
+        spc_title="REPS dominant precipitation type — winner among ensemble-mean rain/snow/ice pellets/freezing rain accumulation",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_spread_t2m": dict(
+        cat="REPS Spread", name="2m Temperature Spread", recipe="reps_spread",
+        reps_var="TMP", reps_level="AGL-2m",
+        cmap="sptemp2m", units="degF", convert=_K_TO_F_DELTA,
+        spc_title="REPS 2m temperature — ensemble spread (std dev across 21 members)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_spread_wind10m": dict(
+        cat="REPS Spread", name="10m Wind Speed Spread", recipe="reps_spread",
+        reps_var="WIND", reps_level="AGL-10m",
+        cmap="spwind10m", units="kt", convert=_MS_TO_KT,
+        spc_title="REPS 10m wind speed — ensemble spread (std dev across 21 members)",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
 }

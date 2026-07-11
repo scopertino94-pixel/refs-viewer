@@ -587,6 +587,39 @@ def cmap_spread_mslp():
     lv = [1,2,3,4,5,7,10,15]
     return _cmap(cs, lv, 'spmslp')
 
+def cmap_spread_temp2m():
+    # REPS 2-m temperature ensemble spread (std dev, degF). White = members
+    # agree closely; dark purple = large forecast uncertainty at that point.
+    cs = ['#f4f4f4','#cfe4ff','#9bd8d8','#7ac97a','#ffe66d',
+          '#ff9a3c','#d63a1f','#7a0000','#3a005a']
+    lv = [1,2,3,4,5,6,8,10,15]
+    return _cmap(cs, lv, 'sptemp2m')
+
+def cmap_spread_wind10m():
+    # REPS 10-m wind speed ensemble spread (std dev, kt). Same white→purple
+    # disagreement ramp, scaled for boundary-layer wind (rarely spreads >30 kt).
+    cs = ['#f4f4f4','#cfe4ff','#9bd8d8','#7ac97a','#ffe66d',
+          '#ff9a3c','#d63a1f','#7a0000','#3a005a']
+    lv = [2,4,6,8,10,12,15,20,25,30]
+    return _cmap(cs, lv, 'spwind10m')
+
+def cmap_ptype_dominant():
+    # Categorical "which precip type dominates" (REPS-only composite):
+    # 0=rain, 1=snow, 2=ice pellets, 3=freezing rain. BoundaryNorm edges
+    # [0,1,2,3,4] give exactly 4 solid bins, one color per category — order
+    # MUST stay in sync with app.reps_core.PTYPE_VARS.
+    cs = ['#2ca02c', '#5b8aff', '#9015c5', '#e0115f']
+    lv = [0, 1, 2, 3, 4]
+    return _cmap(cs, lv, 'ptype_dom')
+
+def cmap_freezing_level():
+    # 0-degC isotherm height, meters. Sequential cool→warm: a low freezing
+    # level (cold air near the surface) reads blue/cool; a high freezing
+    # level (warm column aloft) reads red/warm — same visual logic as a
+    # temperature map even though the plotted quantity is a height.
+    lv = [0,250,500,750,1000,1250,1500,2000,2500,3000,3500,4000,4500,5000,5500]
+    return _cmap(_mpl_palette('turbo', lv), lv, 'frzlvl')
+
 def cmap_clouds():
     cs = ['#f6f6f6','#dedede','#c4c4c4','#a8a8a8','#8c8c8c',
           '#707070','#545454','#383838']
@@ -2538,13 +2571,18 @@ class PlotManager:
                  f"Valid: {valid_dt.strftime('%a %Y-%m-%d %H:%M')} UTC  [F{fhr:03d}]",
                  ha='right', va='center', fontsize=10.5, family='monospace', color=c)
 
-    def _colorbar(self, fig, mappable, levels, label, extend='max', fmt='%g'):
+    def _colorbar(self, fig, mappable, levels, label, extend='max', fmt='%g',
+                  tick_positions=None, tick_labels=None):
         c = self.theme['fg']
         cax = fig.add_axes(self.CBAR_BOX)
+        ticks = tick_positions if tick_positions is not None else levels
         cb = fig.colorbar(mappable, cax=cax, orientation='horizontal',
-                          ticks=levels, extend=extend)
-        cb.ax.set_xticklabels([fmt % v if isinstance(v,(int,float)) else str(v)
-                               for v in levels], color=c)
+                          ticks=ticks, extend=extend)
+        if tick_labels is not None:
+            cb.ax.set_xticklabels(tick_labels, color=c)
+        else:
+            cb.ax.set_xticklabels([fmt % v if isinstance(v,(int,float)) else str(v)
+                                   for v in levels], color=c)
         cb.ax.tick_params(labelsize=9, length=3, pad=2, colors=c)
         cb.outline.set_edgecolor(c)
         # label sits centered vertically with the colorbar bar
@@ -2622,12 +2660,18 @@ class PlotManager:
             mask = data < lv[0]
             masked = np.ma.masked_where(mask, data)
 
-        ext = ('both' if prod['cmap'] in ('t2m','td2m','cin','ir','div','mconv')
-               else 'max')
+        if prod['cmap'] == 'ptype_dom':
+            ext = 'neither'
+        elif prod['cmap'] in ('t2m','td2m','cin','ir','div','mconv'):
+            ext = 'both'
+        else:
+            ext = 'max'
         cf = ax.pcolormesh(lons2d, lats2d, masked, cmap=cm, norm=norm,
                            transform=ccrs.PlateCarree(), zorder=3,
                            shading='nearest', antialiased=False)
-        self._colorbar(fig, cf, lv, prod.get('units',''), extend=ext)
+        self._colorbar(fig, cf, lv, prod.get('units',''), extend=ext,
+                       tick_positions=prod.get('cbar_tick_positions'),
+                       tick_labels=prod.get('cbar_tick_labels'))
 
         if overlays:
             for ov in overlays:
@@ -3416,6 +3460,8 @@ _CMAPS = {
     'vil': cmap_vil, 'gust': cmap_gust, 'dcape': cmap_dcape, 'hail': cmap_hail,
     'mconv': cmap_mconv, 'smot': cmap_smotion,
     'ir': cmap_ir_satellite, 'wfire': cmap_wfirepot,
+    'sptemp2m': cmap_spread_temp2m, 'spwind10m': cmap_spread_wind10m,
+    'ptype_dom': cmap_ptype_dominant, 'frzlvl': cmap_freezing_level,
 }
 
 # =============================================================================
@@ -3516,6 +3562,16 @@ class PlotJob:
             return self._reps_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'reps_wind_level_mean':
             return self._reps_wind_level_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_spread':
+            return self._reps_spread(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_heat_index_mean':
+            return self._reps_heat_index_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_wind_chill_mean':
+            return self._reps_wind_chill_mean(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_ptype_dominant':
+            return self._reps_ptype_dominant(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_freezing_level':
+            return self._reps_freezing_level(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4099,6 +4155,159 @@ class PlotJob:
             return None
         if result is None:
             print(f"[reps_wind_level_mean] {prod['name']} F{fhr:03d}: "
+                  f"loader returned None", flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        if 'convert' in prod:
+            data = prod['convert'](data)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_spread(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS ensemble spread (std dev across all 21 members) -- an
+        uncertainty map for a generic var/level, reusing the same member
+        array load_reps_mean already decodes/caches. Uses prod keys
+        reps_var/reps_level, same convention as _reps_mean.
+        """
+        import asyncio
+        from app import reps_core as reps
+
+        var = prod.get('reps_var')
+        level = prod.get('reps_level')
+        if not var or not level:
+            status_cb(f"{prod['name']}: malformed REPS product (missing reps_var/reps_level)")
+            return None
+
+        status_cb(f"Fetching REPS {var} {level} F{fhr:03d} (spread)...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_spread(cache_dir, date_str, run, var, level, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_spread] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_spread] {prod['name']} F{fhr:03d}: loader returned None",
+                  flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        if 'convert' in prod:
+            data = prod['convert'](data)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_heat_index_mean(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS ensemble-mean heat index (2-m temp + 2-m RH, computed
+        per-member before averaging -- see app/reps_core.py's
+        load_reps_heat_index_mean)."""
+        import asyncio
+        from app import reps_core as reps
+
+        status_cb(f"Fetching REPS heat index F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_heat_index_mean(cache_dir, date_str, run, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_heat_index_mean] {prod['name']} F{fhr:03d}: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_heat_index_mean] {prod['name']} F{fhr:03d}: "
+                  f"loader returned None", flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        if 'convert' in prod:
+            data = prod['convert'](data)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_wind_chill_mean(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS ensemble-mean wind chill (2-m temp + 10-m wind, computed
+        per-member before averaging -- see app/reps_core.py's
+        load_reps_wind_chill_mean)."""
+        import asyncio
+        from app import reps_core as reps
+
+        status_cb(f"Fetching REPS wind chill F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_wind_chill_mean(cache_dir, date_str, run, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_wind_chill_mean] {prod['name']} F{fhr:03d}: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_wind_chill_mean] {prod['name']} F{fhr:03d}: "
+                  f"loader returned None", flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        if 'convert' in prod:
+            data = prod['convert'](data)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_ptype_dominant(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS "dominant precip type" composite -- categorical winner
+        among rain/snow/ice-pellets/freezing-rain ensemble-mean
+        accumulations. See app/reps_core.py's load_reps_dominant_ptype;
+        category order (0..3) is fixed there and must match
+        cmap_ptype_dominant's 4 colors."""
+        import asyncio
+        from app import reps_core as reps
+
+        status_cb(f"Fetching REPS dominant precip type F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_dominant_ptype(cache_dir, date_str, run, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_ptype_dominant] {prod['name']} F{fhr:03d}: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_ptype_dominant] {prod['name']} F{fhr:03d}: "
+                  f"loader returned None", flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_freezing_level(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS 0-degC isotherm height, interpolated from ensemble-mean
+        TMP/HGT profiles across 1000-500 mb. See app/reps_core.py's
+        load_reps_freezing_level."""
+        import asyncio
+        from app import reps_core as reps
+
+        status_cb(f"Fetching REPS freezing level F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_freezing_level(cache_dir, date_str, run, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_freezing_level] {prod['name']} F{fhr:03d}: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_freezing_level] {prod['name']} F{fhr:03d}: "
                   f"loader returned None", flush=True)
             status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
             return None
