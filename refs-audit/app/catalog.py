@@ -64,6 +64,9 @@ CATEGORY_TO_TAB = {
     "REPS Derived":                "REPS",
     "REPS Spread":                 "REPS",
     "REPS Precip Type":            "REPS",
+    "REPS Precipitation":          "REPS",
+    "REPS Flooding":               "REPS",
+    "REPS Severe Proxy":           "REPS",
 }
 
 # A few products move into Winter / Fire when their name implies it.

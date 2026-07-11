@@ -321,3 +321,137 @@ async def load_reps_freezing_level(
         result = np.where(take, interp_h, result)
 
     return result, lat2d, lon2d
+
+
+async def load_reps_windowed_mean(
+    cache_dir: Path, date: str, run: int, var: str, level: str, fhr: int,
+    window_h: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Ensemble mean of a window_h-hour total for a CUMULATIVE-SINCE-INIT
+    field (APCP, SFCWRO -- confirmed via direct GRIB inspection: stepRange
+    is always '0-N', growing with fhr, not a sliding window). A window
+    total is the DIFFERENCE of two cumulative ensemble means -- valid
+    because subtraction is linear, so this equals the true windowed
+    ensemble mean exactly, no extra per-member math needed.
+
+    Negative residue from independent decode rounding is clipped to 0.
+    """
+    end = await load_reps_mean(cache_dir, date, run, var, level, fhr)
+    if end is None:
+        return None
+    end_mean, lat2d, lon2d = end
+    if fhr <= window_h:
+        return np.clip(end_mean, 0.0, None), lat2d, lon2d
+    start = await load_reps_mean(cache_dir, date, run, var, level, fhr - window_h)
+    if start is None:
+        return None
+    start_mean, _, _ = start
+    window = end_mean - start_mean
+    return np.clip(window, 0.0, None), lat2d, lon2d
+
+
+def _decode_qpf_prob_sync(path: Path, thresh_mm: float):
+    """Blocking cfgrib decode of a single probability-of-exceedance
+    message from a REPS "-Prob" accumulation file -- run via
+    asyncio.to_thread from callers.
+
+    These files bundle 3 message families in one GRIB2 file (confirmed
+    via direct eccodes message inspection): 13-14 threshold messages
+    (productDefinitionTemplateNumber=9, "probability of event above
+    lower limit", thresholds 0.2-100mm), 5 percentile messages (PDT10),
+    and 4 derived-stat messages (PDT12: mean/spread/min/max). Filtering
+    cfgrib to the exact (PDT, scaledValueOfLowerLimit, scaleFactorOfLowerLimit)
+    triple isolates exactly one clean 2D field -- no ensemble math needed,
+    this is a genuine pre-computed probability (%), not something we
+    derive ourselves.
+    """
+    import cfgrib
+
+    ds = cfgrib.open_dataset(str(path), filter_by_keys={
+        "productDefinitionTemplateNumber": 9,
+        "scaledValueOfLowerLimit": int(round(thresh_mm)),
+        "scaleFactorOfLowerLimit": 0,
+    })
+    varname = list(ds.data_vars)[0]
+    lat2d = ds.latitude.values
+    lon2d = ds.longitude.values
+    rs, cs = _crop_bbox(lat2d, lon2d)
+    data = ds[varname].values[rs, cs]
+    return data, lat2d[rs, cs], lon2d[rs, cs]
+
+
+async def load_reps_qpf_prob(
+    cache_dir: Path, date: str, run: int, fhr: int, thresh_mm: float,
+    window_h: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Probability (%) that window_h-hour total precip exceeds thresh_mm,
+    decoded directly from REPS's own TPRATE-Accum{window_h}h-Prob file.
+    Only published at fhrs where fhr % window_h == 0 (e.g. the 6h-window
+    file exists at F06/F12/F18... not F03/F09) -- callers must gate on
+    that via the product's fhr_stride.
+    """
+    var = f"TPRATE-Accum{window_h}h-Prob"
+    ckey = (date, run, var, thresh_mm, fhr)
+    if ckey in _decoded_cache:
+        return _decoded_cache[ckey]
+
+    path = await ensure_reps_file_cached(cache_dir, date, run, var, "SFC", fhr)
+    if path is None:
+        return None
+
+    result = await asyncio.to_thread(_decode_qpf_prob_sync, path, thresh_mm)
+
+    if len(_decoded_cache) >= _DECODED_CACHE_MAX:
+        _decoded_cache.pop(next(iter(_decoded_cache)))
+    _decoded_cache[ckey] = result
+    return result
+
+
+async def load_reps_shear_mean(
+    cache_dir: Path, date: str, run: int, level_lo: str, level_hi: str, fhr: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Bulk shear vector magnitude between two pressure levels, computed
+    per-member (vector subtract, then magnitude) BEFORE averaging --
+    same reasoning as wind speed: magnitude is a nonlinear function of
+    the vector components, so the mean of per-member magnitudes differs
+    from (and is more physically correct than) the magnitude of the
+    mean-vector difference in a spread-out ensemble."""
+    u_lo = await load_reps_members(cache_dir, date, run, "UGRD", level_lo, fhr)
+    v_lo = await load_reps_members(cache_dir, date, run, "VGRD", level_lo, fhr)
+    u_hi = await load_reps_members(cache_dir, date, run, "UGRD", level_hi, fhr)
+    v_hi = await load_reps_members(cache_dir, date, run, "VGRD", level_hi, fhr)
+    if u_lo is None or v_lo is None or u_hi is None or v_hi is None:
+        return None
+    u_lo_m, lat2d, lon2d = u_lo
+    v_lo_m, _, _ = v_lo
+    u_hi_m, _, _ = u_hi
+    v_hi_m, _, _ = v_hi
+    du = u_hi_m - u_lo_m
+    dv = v_hi_m - v_lo_m
+    shear_members = np.sqrt(du**2 + dv**2)
+    return shear_members.mean(axis=0), lat2d, lon2d
+
+
+async def load_reps_lapse_rate_mean(
+    cache_dir: Path, date: str, run: int, level_lo: str, level_hi: str, fhr: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Lapse rate (K/km) between two pressure levels, from ensemble-MEAN
+    T/HGT profiles (mean-first -- same cost/precision trade-off as
+    freezing level: not strongly nonlinear, and 21x cheaper than
+    per-member). Positive = temperature decreasing with height (the
+    normal/steep-instability sense; matches refs_core's existing
+    cmap_lapse_rate convention)."""
+    t_lo = await load_reps_mean(cache_dir, date, run, "TMP", level_lo, fhr)
+    h_lo = await load_reps_mean(cache_dir, date, run, "HGT", level_lo, fhr)
+    t_hi = await load_reps_mean(cache_dir, date, run, "TMP", level_hi, fhr)
+    h_hi = await load_reps_mean(cache_dir, date, run, "HGT", level_hi, fhr)
+    if t_lo is None or h_lo is None or t_hi is None or h_hi is None:
+        return None
+    t_lo_m, lat2d, lon2d = t_lo
+    h_lo_m, _, _ = h_lo
+    t_hi_m, _, _ = t_hi
+    h_hi_m, _, _ = h_hi
+    dz_km = (h_hi_m - h_lo_m) / 1000.0
+    with np.errstate(divide='ignore', invalid='ignore'):
+        lapse = -(t_hi_m - t_lo_m) / dz_km
+    return lapse, lat2d, lon2d

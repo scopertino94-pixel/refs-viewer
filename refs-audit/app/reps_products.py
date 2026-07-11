@@ -28,6 +28,7 @@ _FRAC_TO_PCT = lambda f: f * 100.0               # noqa: E731 -- volumetric soil
 # std-dev converts to a Fahrenheit std-dev by scaling only (no +32/-273.15
 # offset, which would be meaningless applied to a spread rather than a value).
 _K_TO_F_DELTA = lambda k: k * 9.0 / 5.0           # noqa: E731
+_MM_TO_IN = lambda mm: mm / 25.4                  # noqa: E731
 
 REPS_MAX_FHOUR = 72
 REPS_FHR_STEP = 3
@@ -150,6 +151,79 @@ PRODUCTS = {
         reps_var="WIND", reps_level="AGL-10m",
         cmap="spwind10m", units="kt", convert=_MS_TO_KT,
         spc_title="REPS 10m wind speed — ensemble spread (std dev across 21 members)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    # ---- v3: rain/flooding/severe-proxy products -----------------------
+    # APCP/SFCWRO are cumulative-since-init (confirmed via direct GRIB
+    # inspection) -- windowed totals come from load_reps_windowed_mean's
+    # differencing, so these are available every 3-hourly step once
+    # fhr > window_h, not just at 6-hourly boundaries like REFS's own QPF.
+    "reps_qpf_mean_6h": dict(
+        cat="REPS Precipitation", name="6-Hour QPF (Mean)", recipe="reps_qpf_mean",
+        reps_qpf_window_h=6,
+        cmap="qpf", units="in", convert=_MM_TO_IN,
+        spc_title="REPS 6-hour QPF — 21-member ensemble mean",
+        fhr_stride=REPS_FHR_STEP, min_fhr=6, source="reps",
+    ),
+    "reps_qpf_mean_24h": dict(
+        cat="REPS Precipitation", name="24-Hour QPF (Mean)", recipe="reps_qpf_mean",
+        reps_qpf_window_h=24,
+        cmap="qpf", units="in", convert=_MM_TO_IN,
+        spc_title="REPS 24-hour QPF — 21-member ensemble mean",
+        fhr_stride=REPS_FHR_STEP, min_fhr=24, source="reps",
+    ),
+    "reps_runoff_mean_6h": dict(
+        cat="REPS Precipitation", name="6-Hour Surface Runoff (Mean)",
+        recipe="reps_runoff_mean", reps_qpf_window_h=6,
+        cmap="qpf", units="in", convert=_MM_TO_IN,
+        spc_title="REPS 6-hour surface runoff — 21-member ensemble mean "
+                   "(land-surface runoff, not just rainfall amount)",
+        fhr_stride=REPS_FHR_STEP, min_fhr=6, source="reps",
+    ),
+    # Thresholds decoded directly from REPS's own TPRATE-Accum6h-Prob file
+    # (genuine probability-of-exceedance messages, no ensemble math) --
+    # only published at 6-hourly-boundary fhrs.
+    "reps_qpf_prob_1in_6h": dict(
+        cat="REPS Flooding", name="P(6-hr QPF > 1.0 in)", recipe="reps_qpf_prob",
+        reps_qpf_window_h=6, reps_qpf_thresh_mm=25,
+        cmap="prob", units="%",
+        spc_title="REPS probability of 6-hour QPF exceeding 1.0 in — "
+                   "decoded directly from REPS's own probability product",
+        fhr_stride=6, min_fhr=6, source="reps",
+    ),
+    "reps_qpf_prob_2in_6h": dict(
+        cat="REPS Flooding", name="P(6-hr QPF > 2.0 in)", recipe="reps_qpf_prob",
+        reps_qpf_window_h=6, reps_qpf_thresh_mm=50,
+        cmap="prob", units="%",
+        spc_title="REPS probability of 6-hour QPF exceeding 2.0 in (flash-flood-relevant) — "
+                   "decoded directly from REPS's own probability product",
+        fhr_stride=6, min_fhr=6, source="reps",
+    ),
+    # Severe-proxy ingredients -- REPS has no CAPE/CIN/reflectivity/UH at
+    # all (confirmed via the full variable-token inventory), so these are
+    # honest substitutes built from what REPS actually publishes, not a
+    # full instability parameter.
+    "reps_shear_850_500_mean": dict(
+        cat="REPS Severe Proxy", name="850-500mb Bulk Shear (Mean)",
+        recipe="reps_shear_mean", reps_level_lo="ISBL-0850", reps_level_hi="ISBL-0500",
+        cmap="shear", units="kt", convert=_MS_TO_KT,
+        spc_title="REPS 850-500mb bulk shear — 21-member ensemble mean "
+                   "(per-member vector shear, then averaged)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_lapse_700_500_mean": dict(
+        cat="REPS Severe Proxy", name="700-500mb Lapse Rate (Mean)",
+        recipe="reps_lapse_rate_mean", reps_level_lo="ISBL-0700", reps_level_hi="ISBL-0500",
+        cmap="lapse", units="K/km",
+        spc_title="REPS 700-500mb lapse rate — from ensemble-mean T/height profiles",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_wind850_mean": dict(
+        cat="REPS Severe Proxy", name="850mb Wind Speed (Mean)",
+        recipe="reps_wind_level_mean", reps_level="ISBL-0850",
+        cmap="wind_sfc", units="kt", convert=_MS_TO_KT,
+        spc_title="REPS 850-mb wind speed — 21-member ensemble mean "
+                   "(low-level jet / moisture-transport indicator)",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
 }
