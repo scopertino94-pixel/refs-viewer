@@ -143,6 +143,20 @@ a:hover { text-decoration: underline; }
   #topbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
   .controls-left, .controls-right { flex: 0 0 auto; }
   .brand-pill { display: none; }
+
+  /* Mobile audit fix -- the ::-webkit-scrollbar thumb above is the ONLY
+     hint that Sector/Step/Model/etc. exist off-screen to the right, and
+     real touch browsers (iOS Safari, Chrome/Android) don't show custom
+     scrollbar styling on a touch-scrolled div at all -- it only ever
+     rendered in desktop-style test tooling. Without it, a phone user has
+     ZERO indication the rest of the toolbar exists. Static right-edge
+     fade mask gives a persistent "there's more this way" cue; it isn't
+     scroll-position-aware (still shows faintly at full scroll), but that
+     small inaccuracy beats no affordance at all. */
+  #topbar {
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+            mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+  }
 }
 
 /* Model selector highlight — draws the eye to the active model */
@@ -1654,4 +1668,27 @@ body.mrms-compare #refs-contour-overlay {
 }
 #viewer {
   bottom: calc(var(--statusbar-h) + env(safe-area-inset-bottom, 0px));
+}
+
+/* Mobile audit fix -- #statusbar's two spans (#status + .src) are sized
+   for a wide desktop bar and were never checked against a real long
+   status message ("Init failed: ...") on a narrow viewport: with no
+   overflow control they wrap to 3-4 lines each while the bar itself
+   stays pinned to --statusbar-h (22px), so the wrapped text spills
+   above/below the bar and the two spans visually overlap each other --
+   confirmed via computed bounding rects (each span's rendered height
+   was 2x+ the bar's). Below 900px, force single-line + ellipsis instead
+   of wrapping, and let flex shrink each span to its own half of the bar
+   (min-width:0 is required for flex children to shrink past their
+   content's intrinsic width -- without it text-overflow can't kick in). */
+@media (max-width: 900px) {
+  #statusbar #status,
+  #statusbar .src {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  #statusbar .src { text-align: right; }
 }
