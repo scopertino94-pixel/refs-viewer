@@ -70,6 +70,7 @@ CATEGORY_TO_TAB = {
     "REPS Extremes":               "REPS",
     "REPS Synoptic":               "REPS",
     "REPS Members":                "REPS",
+    "REPS Convection":             "REPS",
 }
 
 # A few products move into Winter / Fire when their name implies it.

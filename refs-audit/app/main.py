@@ -576,7 +576,7 @@ async def _speculative_prefetch(date: str, run: int, pid: str, fhr: int,
 async def _speculative_render(date, run, pid, fhr, region, palette, theme,
                               bbox, sector_label, cache_key,
                               show_counties, show_cities, show_regions,
-                              model):
+                              model, member: int = -1):
     """Render the next frames ahead of the client's sequential preload —
     but only while a render worker is actually idle. The per-tile lock in
     _render_to_cache dedupes against the client's own request for the same
@@ -595,7 +595,7 @@ async def _speculative_render(date, run, pid, fhr, region, palette, theme,
                                    show_counties=show_counties,
                                    show_cities=show_cities,
                                    show_regions=show_regions,
-                                   model=model)
+                                   model=model, member=member)
         except Exception:
             return  # speculative — never surface
 
@@ -605,7 +605,7 @@ async def _render_to_cache(date, run, pid, fhr, region, palette, theme,
                            show_counties: bool = False,
                            show_cities: bool = False,
                            show_regions: bool = False,
-                           model: str = "refs"):
+                           model: str = "refs", member: int = -1):
     """Internal: ensure a rendered tile is in the cache.
 
     Returns (path, is_no_data). Real renders are cached permanently;
@@ -639,7 +639,8 @@ async def _render_to_cache(date, run, pid, fhr, region, palette, theme,
             fut = loop.run_in_executor(
                 _render_executor,
                 render_png, pid, date, run, fhr, region, palette, theme,
-                bbox, sector_label, show_counties, show_cities, show_regions, model,
+                bbox, sector_label, show_counties, show_cities, show_regions,
+                model, member,
             )
             try:
                 result = await asyncio.wait_for(fut, timeout=RENDER_TIMEOUT_SECS)
@@ -666,7 +667,7 @@ async def _serve_tile(date: str, run: int, pid: str, fhr: int,
                       bbox: str, sector_name: str,
                       counties: int = 0, cities: int = 0,
                       regions: int = 0,
-                      model: str = "refs"):
+                      model: str = "refs", member: int = -1):
     _mark_user_activity()
     if pid not in core.PRODUCTS:
         raise HTTPException(404, f"Unknown product: {pid}")
@@ -685,18 +686,23 @@ async def _serve_tile(date: str, run: int, pid: str, fhr: int,
     # Encode toggle state into the cache key so toggling counties, cities, or
     # regions produces distinct on-disk tiles instead of stomping a shared file.
     cache_key = f"{cache_key}_c{int(show_counties)}y{int(show_cities)}r{int(show_regions_flag)}"
+    # Member browser: a single-member full-size view is a distinct tile from
+    # the grid and from every other member, so it needs its own cache slot.
+    member = int(member)
+    if member >= 0:
+        cache_key = f"{cache_key}_m{member:02d}"
     p, no_data = await _render_to_cache(date, run, pid, fhr, region_arg, palette,
                                 theme, bbox_t, sector_label, cache_key,
                                 show_counties=show_counties,
                                 show_cities=show_cities,
                                 show_regions=show_regions_flag,
-                                model=model)
+                                model=model, member=member)
     # Stay one step ahead of the client's frame-by-frame preload: render the
     # next frames on the idle worker while this one ships. Fire-and-forget.
     asyncio.create_task(_speculative_render(
         date, run, pid, fhr, region_arg, palette, theme, bbox_t,
         sector_label, cache_key, show_counties, show_cities,
-        show_regions_flag, model))
+        show_regions_flag, model, member))
     if no_data:
         # Placeholder tile — must not stick in the browser cache, or the
         # product stays "broken" client-side even after the data arrives.
@@ -723,11 +729,11 @@ async def tile_webp(date: str, run: int, pid: str, fhr: int,
                     sector_name: str = "",
                     counties: int = 0, cities: int = 0,
                     regions: int = 0,
-                    model: str = "refs"):
+                    model: str = "refs", member: int = -1):
     return await _serve_tile(date, run, pid, fhr, region, palette, theme,
                              bbox, sector_name,
                              counties=counties, cities=cities,
-                             regions=regions, model=model)
+                             regions=regions, model=model, member=member)
 
 
 @app.get("/api/tile/{date}/{run}/{pid}/{fhr}.png")
@@ -739,11 +745,11 @@ async def tile_png_alias(date: str, run: int, pid: str, fhr: int,
                          sector_name: str = "",
                          counties: int = 0, cities: int = 0,
                          regions: int = 0,
-                         model: str = "refs"):
+                         model: str = "refs", member: int = -1):
     return await _serve_tile(date, run, pid, fhr, region, palette, theme,
                              bbox, sector_name,
                              counties=counties, cities=cities,
-                             regions=regions, model=model)
+                             regions=regions, model=model, member=member)
 
 
 # --------------------------------------------------------------------------

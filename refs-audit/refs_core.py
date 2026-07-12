@@ -698,6 +698,16 @@ def cmap_temp_adv():
     lv = [-6, -4, -2, -1, 1, 2, 4, 6]
     return _cmap(cs, lv, 'temp_adv')
 
+# Outgoing longwave radiation (W/m^2), enhanced-IR style: LOW OLR (deep,
+# cold convective cloud tops) = bright hot colors so convection pops;
+# HIGH OLR (warm, clear surface) = muted grays/tan. Read like an infrared
+# satellite image of the ensemble's forecast convection.
+def cmap_olr():
+    cs = ['#ffffff','#f0a0ff','#c020e0','#e0202a','#ff7a1f','#ffe000',
+          '#4fc44f','#20a0d0','#2a5ac0','#8a9ab0','#b8b8b8','#d8c9a8']
+    lv = [80,100,120,140,160,180,200,220,240,260,280,300,320]
+    return _cmap(cs, lv, 'olr')
+
 def cmap_wind_sfc():
     # Surface / 10-m wind speed (kt). Scaled for boundary-layer winds — an
     # ensemble mean rarely exceeds ~40-50 kt — not the 30-180 kt jet ramp.
@@ -2257,6 +2267,11 @@ class PlotManager:
     show_cities   = False
     show_regions  = False    # WxWorks HU region boundaries baked into tile
     model_label   = "REFS"   # overridden to "HREF v3" by render.py for HREF tiles
+    # Member browser: when >=0, member-panel recipes (reps_stamps /
+    # reps_qpf_stamps) render THAT single member full-size instead of the
+    # 21-panel grid, so the user can flip through members and zoom. -1 =
+    # the default grid view. Set per-render by render.py (serialized).
+    member_view   = -1
 
     # --- Universal layout spec (all single-panel plots share this) ----------
     # Header band (text)
@@ -3674,7 +3689,7 @@ _CMAPS = {
     'ir': cmap_ir_satellite, 'wfire': cmap_wfirepot,
     'sptemp2m': cmap_spread_temp2m, 'spwind10m': cmap_spread_wind10m,
     'ptype_dom': cmap_ptype_dominant, 'frzlvl': cmap_freezing_level,
-    'temp_adv': cmap_temp_adv,
+    'temp_adv': cmap_temp_adv, 'olr': cmap_olr,
 }
 
 # =============================================================================
@@ -3809,6 +3824,10 @@ class PlotJob:
             return self._reps_stamps(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'reps_qpf_stamps':
             return self._reps_qpf_stamps(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_olr':
+            return self._reps_olr(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_olr_stamps':
+            return self._reps_olr_stamps(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4722,6 +4741,27 @@ class PlotJob:
         adv, _, _ = adv_result
         return self.pm.reps_temp_advection_plot(adv, gh, u, v, lats, lons, prod, region, run_dt, fhr)
 
+    def _reps_stamps_output(self, prod, members, lat2d, lon2d, region, run_dt, fhr):
+        """Shared tail for the member-panel recipes: either the 21-panel
+        grid (default) or a SINGLE member rendered full-size (when the
+        member browser is active, self.pm.member_view in 0..N-1). The
+        single-member path reuses the normal shaded() renderer so the
+        result is full-detail, zoomable and pannable like any other tile;
+        the header name is suffixed with the member label."""
+        n = members.shape[0]
+        mv = getattr(self.pm, 'member_view', -1)
+        if 0 <= mv < n:
+            data = members[mv]
+            if 'convert' in prod:
+                data = prod['convert'](data)
+            label = "CTRL" if mv == 0 else f"m{mv:02d}"
+            prod_m = dict(prod,
+                          name=f"{prod['name']} — {label}",
+                          spc_title=f"{prod.get('spc_title', prod['name'])} — member {label}")
+            return self.pm.shaded(data, lat2d, lon2d, prod_m, region, run_dt, fhr)
+        mems = [(i, members[i], lat2d, lon2d) for i in range(n)]
+        return self.pm.reps_stamps(mems, prod, region, run_dt, fhr)
+
     def _reps_stamps(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS 21-member postage-stamp grid. Loads ALL members of one
         field (reps_var/reps_level) and renders each in its own small
@@ -4754,8 +4794,7 @@ class PlotJob:
             status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
             return None
         members, lat2d, lon2d = result
-        mems = [(i, members[i], lat2d, lon2d) for i in range(members.shape[0])]
-        return self.pm.reps_stamps(mems, prod, region, run_dt, fhr)
+        return self._reps_stamps_output(prod, members, lat2d, lon2d, region, run_dt, fhr)
 
     def _reps_qpf_stamps(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS 21-member QPF postage-stamp grid over a window ending at
@@ -4789,8 +4828,64 @@ class PlotJob:
             status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
             return None
         members, lat2d, lon2d = result
-        mems = [(i, members[i], lat2d, lon2d) for i in range(members.shape[0])]
-        return self.pm.reps_stamps(mems, prod, region, run_dt, fhr)
+        return self._reps_stamps_output(prod, members, lat2d, lon2d, region, run_dt, fhr)
+
+    def _reps_olr(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS ensemble-mean outgoing longwave radiation over a window
+        ending at fhr (de-averaged from the 0-N mean flux). Low OLR =
+        deep convective cloud tops -- reads like an IR satellite image of
+        the ensemble's forecast convection. See app/reps_core.py's
+        load_reps_olr_window."""
+        import asyncio
+        from app import reps_core as reps
+
+        window_h = prod.get('reps_olr_window_h', 6)
+        status_cb(f"Fetching REPS OLR ({window_h}h) F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_olr_window(cache_dir, date_str, run, fhr, window_h))
+        except Exception as e:
+            import traceback
+            print(f"[reps_olr] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_olr] {prod['name']} F{fhr:03d}: loader returned None", flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_olr_stamps(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS 21-member OLR postage-stamp grid (or single member via the
+        member browser) -- per-member de-averaged window OLR. See
+        app/reps_core.py's load_reps_olr_window_members."""
+        import asyncio
+        from app import reps_core as reps
+
+        window_h = prod.get('reps_olr_window_h', 6)
+        status_cb(f"Fetching all REPS members: OLR ({window_h}h) F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_olr_window_members(cache_dir, date_str, run, fhr, window_h))
+        except Exception as e:
+            import traceback
+            print(f"[reps_olr_stamps] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_olr_stamps] {prod['name']} F{fhr:03d}: loader returned None",
+                  flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        members, lat2d, lon2d = result
+        return self._reps_stamps_output(prod, members, lat2d, lon2d, region, run_dt, fhr)
 
     def _reps_freezing_level(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS 0-degC isotherm height, interpolated from ensemble-mean

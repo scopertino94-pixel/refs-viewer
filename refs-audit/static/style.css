@@ -922,6 +922,23 @@ body.compare-swipe #swipe-handle { display: block; }
   font-variant-numeric: tabular-nums;
 }
 
+/* Ensemble member browser nav — sits in the meta-controls row, only shown
+   for member-panel products. Visually set apart with a left divider so it
+   reads as a distinct control from the play/speed buttons. */
+.member-nav {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 6px; padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+.member-nav.hidden { display: none; }
+.member-nav select {
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 3px;
+  font-size: 11.5px; padding: 1px 4px; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.member-nav select:hover { border-color: var(--accent); }
+
 #frame-stack {
   position: relative;
   flex: 1 1 0;

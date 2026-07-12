@@ -350,6 +350,57 @@ async def load_reps_windowed_mean(
     return np.clip(window, 0.0, None), lat2d, lon2d
 
 
+async def load_reps_olr_window(
+    cache_dir: Path, date: str, run: int, fhr: int, window_h: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Ensemble-mean outgoing longwave radiation (W/m^2) averaged over a
+    window_h-hour window ending at fhr. ULWRF_NTAT is published as a
+    time-MEAN flux over 0-N (confirmed empirically: the 0-N mean is
+    ~stable near 242 W/m^2 across N=3..24, i.e. an average, not an
+    accumulation whose value would grow with N). To recover a sub-window
+    mean from two cumulative means, un-integrate:
+        avg(t1,t2) = (t2*avg(0,t2) - t1*avg(0,t1)) / (t2 - t1)
+    so late forecast hours aren't smeared by early convection the way
+    the raw 0-N average is. Low OLR = deep, cold convective cloud tops.
+    """
+    end = await load_reps_mean(cache_dir, date, run, "ULWRF", "NTAT", fhr)
+    if end is None:
+        return None
+    end_avg, lat2d, lon2d = end
+    if fhr <= window_h:
+        return end_avg, lat2d, lon2d
+    start = await load_reps_mean(cache_dir, date, run, "ULWRF", "NTAT", fhr - window_h)
+    if start is None:
+        return None
+    start_avg, _, _ = start
+    t1 = fhr - window_h
+    window_avg = (fhr * end_avg - t1 * start_avg) / window_h
+    return window_avg, lat2d, lon2d
+
+
+async def load_reps_olr_window_members(
+    cache_dir: Path, date: str, run: int, fhr: int, window_h: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Per-MEMBER window-averaged OLR (W/m^2) -- the member-resolved
+    analog of load_reps_olr_window, for the OLR stamp panel + member
+    browser. Same un-integration formula, applied per member so each
+    member's own convective spread is preserved. Returns the full
+    (members[21,ny,nx], lat2d, lon2d) array."""
+    end = await load_reps_members(cache_dir, date, run, "ULWRF", "NTAT", fhr)
+    if end is None:
+        return None
+    end_m, lat2d, lon2d = end
+    if fhr <= window_h:
+        return end_m, lat2d, lon2d
+    start = await load_reps_members(cache_dir, date, run, "ULWRF", "NTAT", fhr - window_h)
+    if start is None:
+        return None
+    start_m, _, _ = start
+    t1 = fhr - window_h
+    window = (fhr * end_m - t1 * start_m) / window_h
+    return window, lat2d, lon2d
+
+
 async def load_reps_windowed_members(
     cache_dir: Path, date: str, run: int, var: str, level: str, fhr: int,
     window_h: int,

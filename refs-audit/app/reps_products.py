@@ -372,6 +372,26 @@ PRODUCTS = {
         spc_title="REPS 24-hour QPF — all 21 members (control + 20 perturbed)",
         fhr_stride=REPS_FHR_STEP, min_fhr=24, source="reps",
     ),
+    # ---- v7: OLR (outgoing longwave radiation) convection proxy --------
+    # ULWRF_NTAT, de-averaged to a 6h window (see load_reps_olr_window).
+    # Low OLR = deep, cold convective cloud tops -- reads like an IR
+    # satellite image of the ensemble's forecast convection.
+    "reps_olr_6h": dict(
+        cat="REPS Convection", name="OLR / Convection (Mean)", recipe="reps_olr",
+        reps_olr_window_h=6,
+        cmap="olr", units="W/m2",
+        spc_title="REPS outgoing longwave radiation, 6-hr mean — 21-member ensemble mean "
+                   "(low = deep convective cloud tops)",
+        fhr_stride=REPS_FHR_STEP, min_fhr=6, source="reps",
+    ),
+    "reps_stamps_olr6h": dict(
+        cat="REPS Members", name="OLR / Convection (All Members)", recipe="reps_olr_stamps",
+        reps_olr_window_h=6,
+        cmap="olr", units="W/m2",
+        spc_title="REPS outgoing longwave radiation, 6-hr mean — all 21 members "
+                   "(low = deep convective cloud tops)",
+        fhr_stride=REPS_FHR_STEP, min_fhr=6, source="reps",
+    ),
 }
 
 

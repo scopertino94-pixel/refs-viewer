@@ -84,7 +84,7 @@ def render(pid: str, date: str, run: int, fhr: int,
            bbox: tuple | None = None, sector_name: str = "",
            show_counties: bool = False, show_cities: bool = False,
            show_regions: bool = False,
-           model: str = "refs"):
+           model: str = "refs", member: int = -1):
     """Render one product/frame. Returns (png_bytes, meta) or None.
 
     Must be called from a single dedicated worker thread.
@@ -126,6 +126,10 @@ def render(pid: str, date: str, run: int, fhr: int,
             "SPC HREF" if _is_spc
             else "REPS" if _is_reps
             else "HREF v3" if model == "href" else "REFS")
+        # Member browser: which single member the stamp recipes should
+        # render full-size (-1 = 21-panel grid). Reset in finally so it
+        # never leaks into the next serialized render.
+        core.PlotManager.member_view = int(member)
         if bbox is not None:
             lon_min, lat_min, lon_max, lat_max = bbox
             core.REGIONS[_CUSTOM] = dict(
@@ -157,6 +161,7 @@ def render(pid: str, date: str, run: int, fhr: int,
     finally:
         if custom_region_installed:
             core.REGIONS.pop(_CUSTOM, None)  # noqa: render-finally
+        core.PlotManager.member_view = -1    # never leak into next render
     if fig is None:
         return None
     buf = io.BytesIO()

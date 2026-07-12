@@ -50,7 +50,21 @@ const state = {
   swipePct: 50,
   compareLoadedFhours: new Set(),
   paintballVar: "refc|40",
+  // Ensemble member browser: -1 = the 21-panel stamp grid ("All");
+  // 0..20 = that single member (0 = control) rendered full-size. Only
+  // meaningful for member-panel products (see MEMBER_RECIPES).
+  member: -1,
 };
+
+// Product recipes that support the member browser (single-member full-
+// size view). The catalog exposes each product's recipe as `ftype`.
+const MEMBER_RECIPES = new Set(["reps_stamps", "reps_qpf_stamps", "reps_olr_stamps"]);
+const REPS_N_MEMBERS = 21;   // 1 control + 20 perturbed
+
+function productIsMemberViewable(pid) {
+  const prod = findProductByPid(pid);
+  return !!(prod && MEMBER_RECIPES.has(prod.ftype));
+}
 
 const SPEED_TO_MS = { 1: 1200, 2: 800, 3: 500, 4: 320, 5: 200 };
 // Renders are serialized backend-side and cold renders take ~30-60s. Keep
@@ -338,6 +352,15 @@ function findTabForPid(pid) {
   for (const [tab, cats] of Object.entries(state.catalog.tabs))
     for (const items of Object.values(cats))
       if (items.some(it => it.pid === pid)) return tab;
+  return null;
+}
+
+function findProductByPid(pid) {
+  for (const cats of Object.values(state.catalog.tabs))
+    for (const items of Object.values(cats)) {
+      const hit = items.find(it => it.pid === pid);
+      if (hit) return hit;
+    }
   return null;
 }
 
@@ -719,6 +742,7 @@ function buildProductList() {
           if (state.step > 1) h = Math.ceil(h / state.step) * state.step;
           state.fhr = Math.min(h, activeMaxFhour());
         }
+        state.member = -1;   // switching product resets the member browser
         state.loadedFhours = new Set(); state.compareLoadedFhours = new Set(); ++comparePreloadGen;
         for (const x of document.querySelectorAll(".prod-item"))
           x.classList.toggle("active", x.dataset.pid === it.pid);
@@ -1015,6 +1039,48 @@ function paintMeta() {
     `<span class="sep">·</span>` +
     `<span class="model-chip model-chip-${state.model}">${
       state.model === "href" ? "HREF v3" : state.model === "reps" ? "REPS" : "REFS"}</span>`;
+  updateMemberNav();
+}
+
+// ----- Ensemble member browser -------------------------------------------
+// Member-panel products (reps_stamps / reps_qpf_stamps / reps_olr_stamps)
+// render a 21-panel grid by default; the member nav lets the user flip to
+// a single member rendered full-size (zoomable/pannable like any tile).
+function updateMemberNav() {
+  const nav = $("member-nav");
+  const sel = $("member-select");
+  if (!nav || !sel) return;
+  const viewable = productIsMemberViewable(state.pid);
+  nav.classList.toggle("hidden", !viewable);
+  if (!viewable) { state.member = -1; return; }
+  // Build the option list once (All + Control + m01..m20).
+  if (sel.options.length !== REPS_N_MEMBERS + 1) {
+    sel.innerHTML = "";
+    const all = document.createElement("option");
+    all.value = "-1"; all.textContent = "All (grid)";
+    sel.appendChild(all);
+    for (let m = 0; m < REPS_N_MEMBERS; m++) {
+      const o = document.createElement("option");
+      o.value = String(m);
+      o.textContent = m === 0 ? "Control" : `m${String(m).padStart(2, "0")}`;
+      sel.appendChild(o);
+    }
+  }
+  if (state.member < -1 || state.member >= REPS_N_MEMBERS) state.member = -1;
+  sel.value = String(state.member);
+}
+
+function setMember(m) {
+  m = Math.max(-1, Math.min(REPS_N_MEMBERS - 1, m));
+  if (m === state.member) return;
+  state.member = m;
+  const sel = $("member-select");
+  if (sel) sel.value = String(m);
+  // A member change re-renders every frame, so invalidate the frame cache
+  // and reload — same pattern as a palette/sector change.
+  state.loadedFhours = new Set(); state.compareLoadedFhours = new Set(); ++comparePreloadGen;
+  loadFrame();
+  startPreloadAllHours();
 }
 
 // ----- SPC calibrated-guidance availability ------------------------------
@@ -1204,6 +1270,11 @@ function tileUrl(fhr) {
   const qs = _commonTileParams();
   if (state.model && state.model !== "refs") qs.set("model", state.model);
   if (regionsEnabled) qs.set("regions", "1");
+  // Member browser: request a single member full-size when one is
+  // selected on a member-viewable product ( -1 / "All" omits the param
+  // so the grid renders, same as every non-member product).
+  if (state.member >= 0 && productIsMemberViewable(state.pid))
+    qs.set("member", state.member);
   return `/api/tile/${state.date}/${String(state.run).padStart(2,"0")}/${state.pid}/${fhr}.webp?${qs}`;
 }
 
@@ -2369,6 +2440,10 @@ function wireEvents() {
   $("btn-play").addEventListener("click", togglePlay);
   $("btn-slower").addEventListener("click", () => changeSpeed(-1));
   $("btn-faster").addEventListener("click", () => changeSpeed(+1));
+  // Ensemble member browser controls.
+  $("member-select").addEventListener("change", (e) => setMember(parseInt(e.target.value, 10)));
+  $("btn-mem-prev").addEventListener("click", () => setMember(state.member - 1));
+  $("btn-mem-next").addEventListener("click", () => setMember(state.member + 1));
   $("prod-search").addEventListener("input", buildProductList);
 
   // MRMS overlay mode picker. Off by default each session — verification
