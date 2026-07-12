@@ -1102,44 +1102,63 @@ body.compare-swipe #swipe-handle { display: block; }
    just hidden -- so it becomes a fixed bottom sheet instead. z-index 150,
    deliberately BELOW .modal (200), .zoom-overlay (250), .alpha-overlay
    (300) so those still stack correctly if opened while the sheet is open. */
+/* Mobile portrait layout (reworked 2026-07-11, round 3).
+   PROBLEM this replaces: the previous mobile design kept the desktop
+   "map fills the whole viewer" model and hid the rail in a slide-up
+   bottom sheet behind a FAB. But a landscape CONUS map (matplotlib
+   figure ~1.45:1) in a tall portrait phone can only ever fill the
+   WIDTH -- so stretching its container to the full viewer height and
+   centering the image left the actual map as a small strip floating in
+   a huge black void (top + bottom letterbox), and the product controls
+   were effectively hidden (users didn't find the FAB).
+   FIX: the natural layout for a short-but-wide map in a tall viewport is
+   a vertical stack -- pin the map at its true size to the top, and let
+   the rail flow directly beneath it in the same scroll column. The map
+   doesn't get smaller (it was always only ~width/1.45 tall); we just
+   delete the void around it and hand that space to the controls. */
 @media (max-width: 900px) {
   :root { --rail-w: 0; }
   #map-wrap { border-right: none; }
 
+  /* Single column, two rows: map (natural height) then rail (fills the
+     rest, scrolls internally). Also neutralize the desktop
+     .rail-collapsed column trick, which would otherwise fight this. */
+  #viewer,
+  #viewer.rail-collapsed {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  #map-wrap { min-height: 0; }
+
+  /* Aspect-lock the frame box to the matplotlib figure ratio
+     (refs_core.py PlotManager.FIG_W/FIG_H = 12.5/8.6) so object-fit:
+     contain has ZERO letterbox -- the map fills the full width at its
+     natural height, no black bars. */
+  #frame-stack {
+    flex: 0 0 auto;
+    width: 100%;
+    aspect-ratio: 12.5 / 8.6;
+  }
+
+  /* Rail flows inline as grid row 2, always visible, scrolls itself --
+     no bottom sheet, no backdrop, no FAB. */
   #right-rail {
     display: block;
-    position: fixed;
-    left: 0; right: 0; bottom: 0;
-    max-height: 75vh;
+    position: static;
+    transform: none;
+    max-height: none;
     border-left: none;
     border-top: 1px solid var(--border);
-    border-radius: 10px 10px 0 0;
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
-    z-index: 150;
-    transform: translateY(100%);
-    transition: transform 220ms ease;
+    border-radius: 0;
+    box-shadow: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    z-index: auto;
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-  #right-rail.rail-open { transform: translateY(0); }
-
-  #rail-backdrop {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 150;
-  }
-  #rail-backdrop.hidden { display: none; }
-
-  /* #rail-toggle used to sit anchored to the map/rail boundary -- with the
-     rail now off-screen at rest, it becomes a fixed bottom-corner FAB. */
-  #rail-toggle {
-    position: fixed;
-    top: auto; right: 16px;
-    bottom: calc(var(--statusbar-h) + 16px);
-    transform: none;
-    width: 44px; height: 44px;
-    font-size: 16px;
-    z-index: 151;
-  }
+  #right-rail.rail-open { transform: none; }
+  #rail-backdrop { display: none; }
+  #rail-toggle { display: none; }
 }
 
 /* ====================== Click-to-zoom lightbox ===================== */
