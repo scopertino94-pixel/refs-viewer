@@ -2957,6 +2957,55 @@ setInterval(async () => {
   });
 })();
 
+// ---------- Stamp-panel click-to-zoom (member browser) --------------------
+// On the 21-panel grid, clicking a panel jumps straight to that member
+// rendered FULL-SIZE via the member browser (setMember) -- a real re-render
+// with full detail, not just a blown-up crop of the small panel image.
+// Capture-phase + stopPropagation, same pattern as the meteogram's
+// Shift+click below, so the plain-click zoom lightbox doesn't also fire.
+//
+// Geometry MUST mirror refs_core.py's PlotManager.reps_stamps exactly
+// (MAP_BOX, the top-clearance shrink, ncols, gutters) -- if that layout
+// ever changes, this needs the same change or clicks will land on the
+// wrong panel. Kept as a handful of named constants (not derived) so a
+// future edit to either side is easy to spot and match.
+const STAMP_MAP_BOX = { left: 0.035, bottom: 0.135, width: 0.93, height: 0.77 };
+const STAMP_TOP_SHRINK = 0.035;   // reps_stamps(): h -= 0.035
+const STAMP_NCOLS = 5;
+const STAMP_GX = 0.006, STAMP_GY = 0.022;
+
+function stampPanelAt(fx, fyFromTop) {
+  const n = REPS_N_MEMBERS;
+  const nrows = Math.ceil(n / STAMP_NCOLS);
+  const left = STAMP_MAP_BOX.left, bot = STAMP_MAP_BOX.bottom;
+  const w = STAMP_MAP_BOX.width, h = STAMP_MAP_BOX.height - STAMP_TOP_SHRINK;
+  const cellW = (w - (STAMP_NCOLS - 1) * STAMP_GX) / STAMP_NCOLS;
+  const cellH = (h - (nrows - 1) * STAMP_GY) / nrows;
+  const figY = 1 - fyFromTop;   // matplotlib figure fraction: 0=bottom, 1=top
+  for (let i = 0; i < n; i++) {
+    const row = Math.floor(i / STAMP_NCOLS), col = i % STAMP_NCOLS;
+    const x0 = left + col * (cellW + STAMP_GX);
+    const y0 = bot + (nrows - 1 - row) * (cellH + STAMP_GY);
+    if (fx >= x0 && fx <= x0 + cellW && figY >= y0 && figY <= y0 + cellH) return i;
+  }
+  return null;   // click landed in a gutter/margin, not on any panel
+}
+
+(function wireStampPanelClick() {
+  const frame = document.getElementById("frame");
+  if (!frame) return;
+  frame.addEventListener("click", (e) => {
+    if (!productIsMemberViewable(state.pid) || state.member !== -1) return;
+    const f = frameFractions(frame, e);
+    if (!f) return;
+    const idx = stampPanelAt(f.fx, f.fy);
+    if (idx === null) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setMember(idx);
+  }, true);
+})();
+
 // ---------- Right-rail bottom sheet (phone/tablet) --------------------------
 // Backdrop-click + Escape close, mirroring wireZoomLightbox() above. Kept as
 // its own self-contained IIFE rather than folded into wireEvents() so it
