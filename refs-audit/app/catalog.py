@@ -69,6 +69,7 @@ CATEGORY_TO_TAB = {
     "REPS Severe Proxy":           "REPS",
     "REPS Extremes":               "REPS",
     "REPS Synoptic":               "REPS",
+    "REPS Members":                "REPS",
 }
 
 # A few products move into Winter / Fire when their name implies it.

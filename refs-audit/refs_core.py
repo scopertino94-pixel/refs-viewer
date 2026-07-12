@@ -3417,6 +3417,72 @@ class PlotManager:
         self._header(fig, prod, run_dt, fhr)
         return fig
 
+    def reps_stamps(self, mems, prod, region, run_dt, fhr):
+        """Meteocentre-style postage-stamp grid of ALL 21 REPS members in
+        one figure -- the ensemble's full spread at a glance.
+
+        A REPS-specific variant of stamps() rather than a reuse: REPS has
+        21 members (vs REFS's 5), so it needs a 5-column layout instead of
+        3, and 21 cartopy panels would be punishingly slow with the 50m
+        STATES/COASTLINE features stamps() uses -- at postage-stamp size
+        the coarse 110m features are indistinguishable anyway, so every
+        feature here is 110m for a ~2-3x render speedup. Member 0 (the
+        control) is labelled CTRL; the 20 perturbed members are m01-m20.
+        """
+        t = self.theme
+        n = len(mems)
+        ncols = 5
+        nrows = (n + ncols - 1) // ncols
+        fig = Figure(figsize=(self.FIG_W, self.FIG_H), dpi=self.DPI)
+        fig.patch.set_facecolor(t['fig_face'])
+        cm, norm, lv = _CMAPS[prod['cmap']]()
+        r = REGIONS[region]
+        proj = self._projection(region)
+        conv = prod.get('convert')
+        mask_lo = max(lv[0], prod.get('mask_below', lv[0]))
+
+        # Shrink the box's top edge vs the shared MAP_BOX so the top row's
+        # per-panel titles clear the figure header (Init/Valid) -- with 5
+        # rows the top row sits much higher than a 2-row REFS stamp grid.
+        left, bot, w, h = self.MAP_BOX
+        h -= 0.035
+        gx, gy = 0.006, 0.022
+        cell_w = (w - (ncols-1)*gx) / ncols
+        cell_h = (h - (nrows-1)*gy) / nrows
+        cf = None
+        for i, (mem, data, lats, lons) in enumerate(mems):
+            if conv is not None:
+                data = conv(data)
+            row = i // ncols
+            col = i %  ncols
+            x0 = left + col*(cell_w + gx)
+            y0 = bot + (nrows-1-row)*(cell_h + gy)
+            ax = fig.add_axes([x0, y0, cell_w, cell_h], projection=proj)
+            ax.set_facecolor(t['fig_axes'])
+            ax.set_extent([r['lon'][0], r['lon'][1], r['lat'][0], r['lat'][1]],
+                          crs=ccrs.PlateCarree())
+            ax.add_feature(cfeature.LAND.with_scale('110m'),  facecolor=t['map_land'])
+            ax.add_feature(cfeature.OCEAN.with_scale('110m'), facecolor=t['map_ocean'])
+            ax.add_feature(cfeature.STATES.with_scale('110m'),
+                           edgecolor=t['map_state'], linewidth=0.25)
+            ax.add_feature(cfeature.COASTLINE.with_scale('110m'),
+                           edgecolor=t['map_border'], linewidth=0.3)
+            if lats.ndim == 1:
+                lons2d, lats2d = np.meshgrid(lons, lats)
+            else:
+                lons2d, lats2d = lons, lats
+            masked = np.ma.masked_less(data, mask_lo)
+            cf = ax.pcolormesh(lons2d, lats2d, masked, cmap=cm, norm=norm,
+                               transform=ccrs.PlateCarree(), shading='nearest',
+                               antialiased=False)
+            label = "CTRL" if mem == 0 else f"m{mem:02d}"
+            ax.set_title(label, fontsize=8, color=t['fg'], pad=1)
+
+        if cf is not None:
+            self._colorbar(fig, cf, lv, prod.get('units',''), extend='max')
+        self._header(fig, prod, run_dt, fhr)
+        return fig
+
     def mean_spread(self, mean, spread, lats, lons, prod, region, run_dt, fhr):
         """Two modes:
           1. mean_contour=True  -> shaded SPREAD + contoured MEAN (synoptic style)
@@ -3739,6 +3805,8 @@ class PlotJob:
             return self._reps_vort500(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'reps_temp_advection':
             return self._reps_temp_advection(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_stamps':
+            return self._reps_stamps(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4651,6 +4719,41 @@ class PlotJob:
         gh, _, _ = h_result
         adv, _, _ = adv_result
         return self.pm.reps_temp_advection_plot(adv, gh, u, v, lats, lons, prod, region, run_dt, fhr)
+
+    def _reps_stamps(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS 21-member postage-stamp grid. Loads ALL members of one
+        field (reps_var/reps_level) and renders each in its own small
+        panel via PlotManager.reps_stamps. See app/reps_core.py's
+        load_reps_members."""
+        import asyncio
+        from app import reps_core as reps
+
+        var = prod.get('reps_var')
+        level = prod.get('reps_level')
+        if not var or not level:
+            status_cb(f"{prod['name']}: malformed REPS product (missing reps_var/reps_level)")
+            return None
+
+        status_cb(f"Fetching all REPS members: {var} {level} F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_members(cache_dir, date_str, run, var, level, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[reps_stamps] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_stamps] {prod['name']} F{fhr:03d}: loader returned None",
+                  flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        members, lat2d, lon2d = result
+        mems = [(i, members[i], lat2d, lon2d) for i in range(members.shape[0])]
+        return self.pm.reps_stamps(mems, prod, region, run_dt, fhr)
 
     def _reps_freezing_level(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS 0-degC isotherm height, interpolated from ensemble-mean

@@ -328,6 +328,31 @@ PRODUCTS = {
                    "advection), heights (dam), wind barbs, ensemble mean",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
+    # ---- v6: 21-member postage-stamp panels (meteocentre-style) --------
+    # All 21 members of one field in a single tiled figure -- the whole
+    # ensemble's spread at a glance. recipe=reps_stamps loads every member
+    # (load_reps_members) and renders each in its own panel.
+    "reps_stamps_t2m": dict(
+        cat="REPS Members", name="2m Temperature (All Members)", recipe="reps_stamps",
+        reps_var="TMP", reps_level="AGL-2m",
+        cmap="t2m", units="degF", convert=_K_TO_F,
+        spc_title="REPS 2m temperature — all 21 members (control + 20 perturbed)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_stamps_wind10m": dict(
+        cat="REPS Members", name="10m Wind Speed (All Members)", recipe="reps_stamps",
+        reps_var="WIND", reps_level="AGL-10m",
+        cmap="wind_sfc", units="kt", convert=_MS_TO_KT,
+        spc_title="REPS 10m wind speed — all 21 members (control + 20 perturbed)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
+    "reps_stamps_mslp": dict(
+        cat="REPS Members", name="MSLP (All Members)", recipe="reps_stamps",
+        reps_var="PRMSL", reps_level="MSL",
+        cmap="mslp", units="hPa", convert=_PA_TO_HPA,
+        spc_title="REPS mean sea-level pressure — all 21 members (control + 20 perturbed)",
+        fhr_stride=REPS_FHR_STEP, source="reps",
+    ),
 }
 
 
