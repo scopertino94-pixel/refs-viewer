@@ -350,6 +350,32 @@ async def load_reps_windowed_mean(
     return np.clip(window, 0.0, None), lat2d, lon2d
 
 
+async def load_reps_windowed_members(
+    cache_dir: Path, date: str, run: int, var: str, level: str, fhr: int,
+    window_h: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Per-MEMBER window_h-hour total for a cumulative-since-init field
+    (APCP) -- the member-resolved analog of load_reps_windowed_mean, for
+    the stamp-panel renderer. Each member's window total is the
+    difference of that same member's two cumulative fields (end minus
+    start), so the per-member spread is preserved (unlike the mean,
+    which could be differenced after averaging). Returns the full
+    (members[21,ny,nx], lat2d, lon2d) array. Negative decode-rounding
+    residue clipped to 0.
+    """
+    end = await load_reps_members(cache_dir, date, run, var, level, fhr)
+    if end is None:
+        return None
+    end_m, lat2d, lon2d = end
+    if fhr <= window_h:
+        return np.clip(end_m, 0.0, None), lat2d, lon2d
+    start = await load_reps_members(cache_dir, date, run, var, level, fhr - window_h)
+    if start is None:
+        return None
+    start_m, _, _ = start
+    return np.clip(end_m - start_m, 0.0, None), lat2d, lon2d
+
+
 def _decode_qpf_prob_sync(path: Path, thresh_mm: float):
     """Blocking cfgrib decode of a single probability-of-exceedance
     message from a REPS "-Prob" accumulation file -- run via

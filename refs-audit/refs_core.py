@@ -3807,6 +3807,8 @@ class PlotJob:
             return self._reps_temp_advection(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'reps_stamps':
             return self._reps_stamps(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'reps_qpf_stamps':
+            return self._reps_qpf_stamps(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4748,6 +4750,41 @@ class PlotJob:
             return None
         if result is None:
             print(f"[reps_stamps] {prod['name']} F{fhr:03d}: loader returned None",
+                  flush=True)
+            status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
+            return None
+        members, lat2d, lon2d = result
+        mems = [(i, members[i], lat2d, lon2d) for i in range(members.shape[0])]
+        return self.pm.reps_stamps(mems, prod, region, run_dt, fhr)
+
+    def _reps_qpf_stamps(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """REPS 21-member QPF postage-stamp grid over a window ending at
+        fhr. APCP is cumulative-since-init, so each member's window total
+        is a per-member difference -- see app/reps_core.py's
+        load_reps_windowed_members."""
+        import asyncio
+        from app import reps_core as reps
+
+        window_h = prod.get('reps_qpf_window_h')
+        if not window_h:
+            status_cb(f"{prod['name']}: malformed REPS product (missing reps_qpf_window_h)")
+            return None
+
+        status_cb(f"Fetching all REPS members: {window_h}h QPF F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(
+                reps.load_reps_windowed_members(cache_dir, date_str, run, "APCP", "SFC",
+                                                 fhr, window_h))
+        except Exception as e:
+            import traceback
+            print(f"[reps_qpf_stamps] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: REPS fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[reps_qpf_stamps] {prod['name']} F{fhr:03d}: loader returned None",
                   flush=True)
             status_cb(f"{prod['name']}: no REPS data for F{fhr:03d}")
             return None

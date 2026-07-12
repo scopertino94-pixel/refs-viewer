@@ -353,6 +353,25 @@ PRODUCTS = {
         spc_title="REPS mean sea-level pressure — all 21 members (control + 20 perturbed)",
         fhr_stride=REPS_FHR_STEP, source="reps",
     ),
+    # Per-member windowed QPF stamps -- each member's own window total
+    # (APCP is cumulative-since-init, so this is a per-member diff, see
+    # load_reps_windowed_members). The single most useful stamp set for
+    # convection/flooding: shows which members are wet, where, and how
+    # much they disagree.
+    "reps_stamps_qpf6h": dict(
+        cat="REPS Members", name="6-Hour QPF (All Members)", recipe="reps_qpf_stamps",
+        reps_qpf_window_h=6,
+        cmap="qpf", units="in", convert=_MM_TO_IN,
+        spc_title="REPS 6-hour QPF — all 21 members (control + 20 perturbed)",
+        fhr_stride=REPS_FHR_STEP, min_fhr=6, source="reps",
+    ),
+    "reps_stamps_qpf24h": dict(
+        cat="REPS Members", name="24-Hour QPF (All Members)", recipe="reps_qpf_stamps",
+        reps_qpf_window_h=24,
+        cmap="qpf", units="in", convert=_MM_TO_IN,
+        spc_title="REPS 24-hour QPF — all 21 members (control + 20 perturbed)",
+        fhr_stride=REPS_FHR_STEP, min_fhr=24, source="reps",
+    ),
 }
 
 
