@@ -1233,10 +1233,14 @@ async def meteogram_endpoint(date: str, run: int, pid: str,
     if pid not in core.PRODUCTS:
         raise HTTPException(404, f"Unknown product: {pid}")
     prod = core.PRODUCTS[pid]
-    if prod.get("recipe") not in (None, "prob_window"):
+    _is_rrfs_aq = prod.get("source") == "rrfs_aq"
+    if not _is_rrfs_aq and prod.get("recipe") not in (None, "prob_window"):
         return {"ok": True, "series": None,
                 "reason": "not supported for member/multi-field products"}
-    max_fhr = href_data.MAX_FHOUR if model == "href" else refs_data.MAX_FHOUR
+    if _is_rrfs_aq:
+        max_fhr = rrfs_aq_data.max_fhour_for_run(run)
+    else:
+        max_fhr = href_data.MAX_FHOUR if model == "href" else refs_data.MAX_FHOUR
     stride = max(1, int(prod.get("fhr_stride", 1)))
     fmin = max(1, int(prod.get("min_fhr", 0)))
     fhrs = [h for h in range(fmin, max_fhr + 1) if h % stride == 0] or [fmin]

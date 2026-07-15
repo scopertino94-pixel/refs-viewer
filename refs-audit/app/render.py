@@ -243,6 +243,43 @@ def _probe_lonlat(core, region: str, fx: float, fy: float):
     return float(lonp), float(latp)
 
 
+def _probe_load_field_rrfs_aq(prod, date: str, run: int, fhr: int):
+    """Load one fhr's RRFS-AQ field for point sampling -- same data path as
+    PlotJob._rrfs_aq_field / _rrfs_aqi in refs_core.py, minus the plotting."""
+    import asyncio
+    from app import rrfs_aq_core as aq
+    core = _core
+    cache_dir = Path(core.DEFAULT_LOCAL)
+    recipe = prod.get("recipe")
+    try:
+        if recipe == "rrfs_aqi":
+            result = asyncio.run(aq.load_rrfs_pm25_total_mean(cache_dir, date, run, fhr))
+            if result is None:
+                return None, None, None
+            pm25_kgm3, la, lo = result
+            data = aq.aqi_from_pm25(pm25_kgm3 * 1e9)
+            return data, la, lo
+        loaders = {
+            "smoke_sfc": aq.load_rrfs_smoke_surface,
+            "vi_smoke": aq.load_rrfs_vi_smoke,
+            "aod": aq.load_rrfs_aod,
+        }
+        loader = loaders.get(prod.get("rrfs_field"))
+        if loader is None:
+            return None, None, None
+        result = asyncio.run(loader(cache_dir, date, run, fhr))
+        if result is None:
+            return None, None, None
+        data, la, lo = result
+        if "convert" in prod:
+            data = prod["convert"](data)
+        return data, la, lo
+    except Exception as e:
+        print(f"[probe-rrfs-aq] {prod.get('name')} F{fhr:03d}: "
+              f"{type(e).__name__}: {e}", flush=True)
+        return None, None, None
+
+
 def _probe_load_field(job, prod, date: str, run: int, fhr: int):
     """Load the same 2-D field a tile render would, for sampling.
     Supports recipe None and prob_window; returns (data, lats, lons)."""
@@ -387,7 +424,8 @@ def probe_series(pid: str, date: str, run: int, fhrs: list[int],
     prod = core.PRODUCTS.get(pid)
     if prod is None:
         return None
-    if prod.get("recipe") not in (None, "prob_window"):
+    _is_rrfs_aq = prod.get("source") == "rrfs_aq"
+    if not _is_rrfs_aq and prod.get("recipe") not in (None, "prob_window"):
         return None
     _is_spc = prod.get("source") == "spc_post"
     if _is_spc:
@@ -420,7 +458,10 @@ def probe_series(pid: str, date: str, run: int, fhrs: list[int],
         for fhr in fhrs:
             val = None
             try:
-                data, la, lo = _probe_load_field(job, prod, date, run, fhr)
+                if _is_rrfs_aq:
+                    data, la, lo = _probe_load_field_rrfs_aq(prod, date, run, fhr)
+                else:
+                    data, la, lo = _probe_load_field(job, prod, date, run, fhr)
                 if data is not None:
                     if idx is None:
                         idx = _nearest_idx(la, lo, lonp, latp)
