@@ -331,10 +331,11 @@ function writeURLState() {
 // ----- Model helpers -------------------------------------------------------
 function activeMaxFhour() {
   if (state.model === "reps") return REPS_MAX_FHOUR;
-  if (state.model === "rrfs_aq") {
-    // Unlike REPS's fixed 72h, RRFS-AQ's max fhour depends on the specific
-    // cycle (18h off-hour, 84h at synoptic hours) -- look up the current
-    // cycle's own value, falling back to the conservative 18h floor before
+  if (state.productSource === "rrfs_aq") {
+    // RRFS-AQ lives inside the REFS/HREF catalog (not a model toggle), but
+    // its max fhour still depends on the specific RRFS cycle (18h off-hour,
+    // 84h at synoptic hours) rather than REFS/HREF's own catalog max --
+    // look it up, falling back to the conservative 18h floor before
     // rrfsaqCycles has loaded.
     const c = state.rrfsaqCycles.find(c => c.date === state.date && c.run === state.run);
     return c ? c.max_fhour : RRFS_AQ_MAX_FHOUR_FALLBACK;
@@ -347,7 +348,6 @@ function activeMaxFhour() {
 function applyModelClass() {
   document.body.classList.toggle("model-href", state.model === "href");
   document.body.classList.toggle("model-reps", state.model === "reps");
-  document.body.classList.toggle("model-rrfs-aq", state.model === "rrfs_aq");
 }
 
 function hrefCycleExists(date, run) {
@@ -386,10 +386,14 @@ const REPS_TAB = "REPS";
 const REPS_MAX_FHOUR = 72;
 
 // RRFS-AQ (smoke/dust/AOD/AQI) is RRFS's own deterministic output -- REFS/
-// HREF's ensemble-post files carry no smoke/dust fields at all. Hourly
-// cadence (unlike REPS's 4x-daily), run-dependent max fhour (18h off-hour,
-// 84h at synoptic 00/06/12/18z) -- see activeMaxFhour().
-const RRFS_AQ_TAB = "Air Quality";
+// HREF's ensemble-post files carry no smoke/dust fields at all. UNLIKE
+// REPS, this is NOT a separate model toggle: its product ids (rrfs_*)
+// don't collide with anything REFS/HREF already has, so it lives as an
+// ordinary always-visible "Air Quality" tab inside the REFS/HREF catalog,
+// gated by state.productSource === "rrfs_aq" (same pattern as SPC
+// Guidance) rather than by state.model. Hourly cadence (unlike REPS's
+// 4x-daily), run-dependent max fhour (18h off-hour, 84h at synoptic
+// 00/06/12/18z) -- see activeMaxFhour() and applyRrfsAqAvailability().
 const RRFS_AQ_MAX_FHOUR_FALLBACK = 18;
 
 // ----- Favorites ----------------------------------------------------------
@@ -664,14 +668,16 @@ function paintTopbar() {
 function buildTabs() {
   const wrap = $("tabs");
   wrap.innerHTML = "";
-  // REPS and RRFS-AQ are different models, not REFS/HREF product
-  // categories -- show ONLY the active one's tab (so it never reads as
-  // "one more REFS tab"), and hide both entirely otherwise.
+  // REPS is a different model (not a REFS/HREF product category) -- show
+  // ONLY its tab when active (so it never reads as "one more REFS tab"),
+  // and hide it entirely otherwise. "Air Quality" (RRFS-AQ) is NOT a
+  // separate model -- it's an ordinary always-visible tab inside the
+  // REFS/HREF catalog (like Synoptic/Severe/etc), so REPS's own filter
+  // above already correctly hides it while REPS is active, with no extra
+  // special-casing needed here.
   for (const tab of Object.keys(state.catalog.tabs)) {
     if (state.model === "reps" && tab !== REPS_TAB) continue;
     if (state.model !== "reps" && tab === REPS_TAB) continue;
-    if (state.model === "rrfs_aq" && tab !== RRFS_AQ_TAB) continue;
-    if (state.model !== "rrfs_aq" && tab === RRFS_AQ_TAB) continue;
     const b = document.createElement("button");
     b.className = "tab"; b.textContent = tab; b.dataset.tab = tab;
     b.addEventListener("click", () => {
@@ -741,6 +747,7 @@ function buildProductList() {
       });
       el.addEventListener("click", async () => {
         const wasSpc = state.productSource === "spc_post";
+        const wasAq  = state.productSource === "rrfs_aq";
         state.pid = it.pid;
         state.pidName = it.name;
         state.minFhr = Math.max(1, it.min_fhr || 0);   // F000 never exists
@@ -769,13 +776,16 @@ function buildProductList() {
         state.loadedFhours = new Set(); state.compareLoadedFhours = new Set(); ++comparePreloadGen;
         for (const x of document.querySelectorAll(".prod-item"))
           x.classList.toggle("active", x.dataset.pid === it.pid);
-        // SPC products carry their own (sparse) availability; non-SPC products
-        // leaving an SPC selection must restore the model cycle's availability.
+        // SPC and RRFS-AQ products each carry their own (sparse)
+        // availability; leaving either back to an ordinary REFS/HREF
+        // product must restore the model cycle's availability.
         if (state.productSource === "spc_post") {
           updateSpcUiLock();
           await enforceSpcConstraints();   // force HREF + 00z/12z
           await applySpcAvailability();
-        } else if (wasSpc) {
+        } else if (state.productSource === "rrfs_aq") {
+          await applyRrfsAqAvailability();
+        } else if (wasSpc || wasAq) {
           state.sparseAvail = false;
           updateSpcUiLock();
           await refreshCycleStatus();
@@ -1061,8 +1071,12 @@ function paintMeta() {
     `<span class="label">Palette</span><span class="val">${state.palette}</span>` +
     `<span class="sep">·</span>` +
     `<span class="model-chip model-chip-${state.model}">${
-      state.model === "href" ? "HREF v3" : state.model === "reps" ? "REPS"
-      : state.model === "rrfs_aq" ? "RRFS-AQ" : "REFS"}</span>`;
+      state.model === "href" ? "HREF v3" : state.model === "reps" ? "REPS" : "REFS"}</span>` +
+    // RRFS-AQ isn't a model toggle, so it doesn't replace the REFS/HREF
+    // chip above -- it's a second badge noting the data actually came
+    // from RRFS's own deterministic output, not REFS/HREF's ensemble.
+    (state.productSource === "rrfs_aq"
+      ? `<span class="model-chip model-chip-rrfs_aq">RRFS-AQ</span>` : "");
   updateMemberNav();
 }
 
@@ -1138,6 +1152,47 @@ async function applySpcAvailability() {
   paintTimeline();
 }
 
+// RRFS-AQ (smoke/dust/AOD/AQI) -- same shape as applySpcAvailability()
+// above: an exact per-product fhr list from its own status endpoint, not
+// a model-level concept. All 4 AQ products come from the SAME single
+// RRFS grib2 file per (date,run,fhr), so /api/rrfsaq-status's answer is
+// identical across them in practice; querying per-pid just mirrors SPC's
+// established pattern rather than assuming that will always stay true.
+async function applyRrfsAqAvailability() {
+  state.sparseAvail = true;
+  const pill = $("cycle-status-pill");
+  pill.className = "pill"; pill.textContent = "AQ…";
+  try {
+    const r = await fetch(
+      `/api/rrfsaq-status/${state.date}/${state.run}/${state.pid}`).then(x => x.json());
+    state.availableFhours = new Set(r.available || []);
+    const rz = String(state.run).padStart(2, "0");
+    if (state.availableFhours.size) {
+      pill.className = "pill complete"; pill.textContent = `AQ ${rz}Z`;
+    } else {
+      pill.className = "pill partial";
+      pill.textContent = `no AQ data · ${rz}Z`;
+    }
+  } catch {
+    state.availableFhours = new Set();
+    pill.className = "pill partial"; pill.textContent = "AQ status?";
+  }
+  // Also keep rrfsaqCycles fresh -- activeMaxFhour() reads the current
+  // cycle's own max_fhour from it (18h off-hour, 84h synoptic), which
+  // /api/rrfsaq-status's per-product response doesn't directly expose.
+  if (!state.rrfsaqCycles.some(c => c.date === state.date && c.run === state.run)) {
+    try {
+      const fresh = await fetch("/api/rrfsaq-cycles").then(x => x.json());
+      state.rrfsaqCycles = fresh.cycles || [];
+    } catch (_) {}
+  }
+  if (state.availableFhours.size && !state.availableFhours.has(state.fhr)) {
+    const sorted = [...state.availableFhours].sort((a, b) => a - b);
+    state.fhr = sorted.find(h => h >= state.fhr) ?? sorted[sorted.length - 1];
+  }
+  paintTimeline();
+}
+
 // SPC calibrated guidance only exists for the HREF model, 00z/12z cycles.
 function isSpcActive() { return state.productSource === "spc_post"; }
 function snapSpcRun(run) { return run >= 12 ? 12 : 0; }
@@ -1185,9 +1240,16 @@ async function enforceSpcConstraints() {
 
 // ----- Cycle status (which fhours are published) -------------------------
 async function refreshCycleStatus() {
-  // SPC calibrated products bypass the model cycle-status entirely.
+  // SPC calibrated products and RRFS-AQ (smoke/dust/AOD/AQI) both bypass
+  // the REFS/HREF model cycle-status entirely -- neither is gated by
+  // state.model, both are gated by which product is actually selected
+  // (state.productSource), same as SPC has always worked.
   if (state.productSource === "spc_post") {
     await applySpcAvailability();
+    return;
+  }
+  if (state.productSource === "rrfs_aq") {
+    await applyRrfsAqAvailability();
     return;
   }
   const pill = $("cycle-status-pill");
@@ -1207,31 +1269,6 @@ async function refreshCycleStatus() {
     if (exists) {
       state.availableFhours = new Set(
         Array.from({length: REPS_MAX_FHOUR / 3 + 1}, (_, i) => i * 3));
-      pill.textContent = "Complete"; pill.classList.add("complete");
-    } else {
-      state.availableFhours = new Set();
-      pill.textContent = "unposted"; pill.classList.add("partial");
-    }
-    paintTimeline();
-    return;
-  }
-
-  // RRFS-AQ is also atomic-per-cycle in practice (RRFS posts its hours in
-  // order fairly quickly once a run starts), but unlike REPS its max fhour
-  // varies BY CYCLE (18h off-hour, 84h synoptic) -- read that cycle's own
-  // max_fhour from rrfsaqCycles rather than a fixed constant, and step by
-  // 1h (hourly model) not REPS's 3h.
-  if (state.model === "rrfs_aq") {
-    if (!rrfsaqCycleExists(state.date, state.run)) {
-      try {
-        const fresh = await fetch("/api/rrfsaq-cycles").then(r => r.json());
-        state.rrfsaqCycles = fresh.cycles || [];
-      } catch (_) {}
-    }
-    const cyc = state.rrfsaqCycles.find(c => c.date === state.date && c.run === state.run);
-    if (cyc) {
-      state.availableFhours = new Set(
-        Array.from({length: cyc.max_fhour + 1}, (_, i) => i));
       pill.textContent = "Complete"; pill.classList.add("complete");
     } else {
       state.availableFhours = new Set();
@@ -2454,33 +2491,13 @@ function wireEvents() {
         state.run  = state.repsCycles[0].run;
         paintTopbar();
       }
-    } else if (state.model === "rrfs_aq") {
-      // RRFS-AQ is an independent model (RRFS's own deterministic smoke/
-      // dust/AOD/AQI output) with its own hourly cycle schedule -- same
-      // treatment as REPS above, jump to its own latest cycle and a valid
-      // product rather than whatever REFS/HREF/REPS state was active.
-      state.tab = RRFS_AQ_TAB;
-      if (!state.pid || !state.pid.startsWith("rrfs_")) {
-        state.pid = "rrfs_aqi";
-        state.pidName = nameForPid(state.pid);
-      }
-      if (state.rrfsaqCycles.length === 0) {
-        setStatus("Checking RRFS-AQ cycles…");
-        try {
-          const j = await fetch("/api/rrfsaq-cycles").then(r => r.json());
-          state.rrfsaqCycles = j.cycles || [];
-        } catch (e) { setStatus("RRFS-AQ cycle fetch failed: " + e); }
-      }
-      if (state.rrfsaqCycles.length > 0 && !rrfsaqCycleExists(state.date, state.run)) {
-        state.date = state.rrfsaqCycles[0].date;
-        state.run  = state.rrfsaqCycles[0].run;
-        paintTopbar();
-      }
-    } else if (prev === "reps" || prev === "rrfs_aq") {
-      // Switching away from REPS or RRFS-AQ: their tabs are now hidden and
-      // their pids are invalid for REFS/HREF, so fall back to the app's
-      // own first-visit default rather than leaving state pointed at an
-      // unreachable product.
+    } else if (prev === "reps") {
+      // Switching away from REPS: its tab is now hidden and its pids are
+      // invalid for REFS/HREF, so fall back to the app's own first-visit
+      // default rather than leaving state pointed at an unreachable
+      // product. (RRFS-AQ needs no equivalent here -- it isn't a model
+      // toggle, so its tab/products stay reachable regardless of the
+      // REFS/HREF selection.)
       state.tab = "Precipitation";
       state.pid = "qpf_3h_pmmn_series";
       state.pidName = nameForPid(state.pid);

@@ -19,8 +19,12 @@ from . import reps_products as _reps      # noqa: E402
 _reps.register()
 
 # Register RRFS air-quality (smoke/dust/AOD/AQI) -- RRFS's own deterministic
-# output, a genuinely independent data source from REFS/HREF (whose
-# ensemble-post files carry no smoke/dust fields at all) and from REPS.
+# output; REFS/HREF's own ensemble-post files carry no smoke/dust fields
+# at all. UNLIKE REPS, this is NOT a separate model toggle -- its product
+# ids don't collide with anything REFS/HREF already has, so it's just an
+# ordinary always-visible "Air Quality" tab inside the REFS/HREF catalog
+# (frontend gates it by product source, same as SPC Guidance, not by a
+# model value).
 from . import rrfs_aq_products as _rrfs_aq   # noqa: E402
 _rrfs_aq.register()
 
