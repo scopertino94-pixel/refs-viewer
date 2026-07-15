@@ -28,13 +28,15 @@ _job_reps = None           # PlotJob for REPS (recipe='reps_mean' never touches
                            # self.proc -- it does its own async fetch/decode --
                            # so no dedicated DataProcessor is needed, unlike
                            # the other three jobs above).
+_job_rrfs_aq = None        # PlotJob for RRFS air-quality (same shape as REPS --
+                           # recipes do their own async fetch/decode, no processor).
 _core = None               # refs_core module reference
 _init_lock = threading.Lock()
 
 
 def _ensure_initialized():
     """Import refs_core on the calling thread and build PlotJobs for both models."""
-    global _initialized, _job_refs, _job_href, _job_spc, _job_reps, _core
+    global _initialized, _job_refs, _job_href, _job_spc, _job_reps, _job_rrfs_aq, _core
     if _initialized:
         return
     with _init_lock:
@@ -60,6 +62,13 @@ def _ensure_initialized():
         except Exception as e:
             print(f"[render] reps_products registration failed: "
                   f"{type(e).__name__}: {e}", flush=True)
+        # ...and to RRFS air-quality's.
+        try:
+            from . import rrfs_aq_products as _rrfs_aq_products  # noqa: WPS433
+            _rrfs_aq_products.register()
+        except Exception as e:
+            print(f"[render] rrfs_aq_products registration failed: "
+                  f"{type(e).__name__}: {e}", flush=True)
         _core = core
         _job_refs = core.PlotJob(
             core.REFSDataProcessor(local_dir=core.DEFAULT_LOCAL),
@@ -74,6 +83,7 @@ def _ensure_initialized():
             core.PlotManager(),
         )
         _job_reps = core.PlotJob(None, core.PlotManager())
+        _job_rrfs_aq = core.PlotJob(None, core.PlotManager())
         _initialized = True
         print(f"[render] refs_core initialized on thread "
               f"{threading.current_thread().name}", flush=True)
@@ -105,10 +115,13 @@ def render(pid: str, date: str, run: int, fhr: int,
     _prod = core.PRODUCTS.get(pid)
     _is_spc = bool(_prod and _prod.get("source") == "spc_post")
     _is_reps = bool(_prod and _prod.get("source") == "reps")
+    _is_rrfs_aq = bool(_prod and _prod.get("source") == "rrfs_aq")
     if _is_spc:
         job = _job_spc
     elif _is_reps:
         job = _job_reps
+    elif _is_rrfs_aq:
+        job = _job_rrfs_aq
     elif model == "href":
         job = _job_href
     else:
@@ -125,6 +138,7 @@ def render(pid: str, date: str, run: int, fhr: int,
         core.PlotManager.model_label   = (
             "SPC HREF" if _is_spc
             else "REPS" if _is_reps
+            else "RRFS-AQ" if _is_rrfs_aq
             else "HREF v3" if model == "href" else "REFS")
         # Member browser: which single member the stamp recipes should
         # render full-size (-1 = 21-panel grid). Reset in finally so it

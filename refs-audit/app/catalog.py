@@ -18,6 +18,12 @@ _extras.register()
 from . import reps_products as _reps      # noqa: E402
 _reps.register()
 
+# Register RRFS air-quality (smoke/dust/AOD/AQI) -- RRFS's own deterministic
+# output, a genuinely independent data source from REFS/HREF (whose
+# ensemble-post files carry no smoke/dust fields at all) and from REPS.
+from . import rrfs_aq_products as _rrfs_aq   # noqa: E402
+_rrfs_aq.register()
+
 
 # Map refs_core category strings → SPC-HREF top-tab buckets.
 TAB_ORDER = [
@@ -31,6 +37,7 @@ TAB_ORDER = [
     "Member Viewer",
     "Ensemble Spread",
     "REPS",
+    "Air Quality",
 ]
 
 CATEGORY_TO_TAB = {
@@ -71,6 +78,7 @@ CATEGORY_TO_TAB = {
     "REPS Synoptic":               "REPS",
     "REPS Members":                "REPS",
     "REPS Convection":             "REPS",
+    "Air Quality":                 "Air Quality",
 }
 
 # A few products move into Winter / Fire when their name implies it.

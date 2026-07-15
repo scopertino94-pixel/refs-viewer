@@ -19,6 +19,7 @@ const state = {
   cycles: [],                            // [{date, run, label, max_fhour}] from /api/cycles
   hrefCycles: [],                        // [{date, run, label, max_fhour}] from /api/href-cycles
   repsCycles: [],                        // [{date, run, label, max_fhour}] from /api/reps-cycles
+  rrfsaqCycles: [],                      // [{date, run, label, max_fhour}] from /api/rrfsaq-cycles -- max_fhour VARIES per cycle (18 off-hour, 84 synoptic), unlike REPS's fixed 72
   date: null, run: null,                 // currently-selected cycle
   sector: "CONUS",
   palette: "Default",
@@ -330,6 +331,14 @@ function writeURLState() {
 // ----- Model helpers -------------------------------------------------------
 function activeMaxFhour() {
   if (state.model === "reps") return REPS_MAX_FHOUR;
+  if (state.model === "rrfs_aq") {
+    // Unlike REPS's fixed 72h, RRFS-AQ's max fhour depends on the specific
+    // cycle (18h off-hour, 84h at synoptic hours) -- look up the current
+    // cycle's own value, falling back to the conservative 18h floor before
+    // rrfsaqCycles has loaded.
+    const c = state.rrfsaqCycles.find(c => c.date === state.date && c.run === state.run);
+    return c ? c.max_fhour : RRFS_AQ_MAX_FHOUR_FALLBACK;
+  }
   return state.model === "href"
     ? (state.catalog.href_max_fhour || 48)
     : state.catalog.max_fhour;
@@ -338,6 +347,7 @@ function activeMaxFhour() {
 function applyModelClass() {
   document.body.classList.toggle("model-href", state.model === "href");
   document.body.classList.toggle("model-reps", state.model === "reps");
+  document.body.classList.toggle("model-rrfs-aq", state.model === "rrfs_aq");
 }
 
 function hrefCycleExists(date, run) {
@@ -346,6 +356,10 @@ function hrefCycleExists(date, run) {
 
 function repsCycleExists(date, run) {
   return state.repsCycles.some(c => c.date === date && c.run === run);
+}
+
+function rrfsaqCycleExists(date, run) {
+  return state.rrfsaqCycles.some(c => c.date === date && c.run === run);
 }
 
 function findTabForPid(pid) {
@@ -370,6 +384,13 @@ function findProductByPid(pid) {
 // folded into the REFS/HREF product catalog.
 const REPS_TAB = "REPS";
 const REPS_MAX_FHOUR = 72;
+
+// RRFS-AQ (smoke/dust/AOD/AQI) is RRFS's own deterministic output -- REFS/
+// HREF's ensemble-post files carry no smoke/dust fields at all. Hourly
+// cadence (unlike REPS's 4x-daily), run-dependent max fhour (18h off-hour,
+// 84h at synoptic 00/06/12/18z) -- see activeMaxFhour().
+const RRFS_AQ_TAB = "Air Quality";
+const RRFS_AQ_MAX_FHOUR_FALLBACK = 18;
 
 // ----- Favorites ----------------------------------------------------------
 const FAV_TAB = "★ Favorites";
@@ -643,12 +664,14 @@ function paintTopbar() {
 function buildTabs() {
   const wrap = $("tabs");
   wrap.innerHTML = "";
-  // REPS is a different model, not a REFS/HREF product category -- show
-  // ONLY its tab when active (so it never reads as "one more REFS tab"),
-  // and hide it entirely otherwise.
+  // REPS and RRFS-AQ are different models, not REFS/HREF product
+  // categories -- show ONLY the active one's tab (so it never reads as
+  // "one more REFS tab"), and hide both entirely otherwise.
   for (const tab of Object.keys(state.catalog.tabs)) {
     if (state.model === "reps" && tab !== REPS_TAB) continue;
     if (state.model !== "reps" && tab === REPS_TAB) continue;
+    if (state.model === "rrfs_aq" && tab !== RRFS_AQ_TAB) continue;
+    if (state.model !== "rrfs_aq" && tab === RRFS_AQ_TAB) continue;
     const b = document.createElement("button");
     b.className = "tab"; b.textContent = tab; b.dataset.tab = tab;
     b.addEventListener("click", () => {
@@ -1038,7 +1061,8 @@ function paintMeta() {
     `<span class="label">Palette</span><span class="val">${state.palette}</span>` +
     `<span class="sep">·</span>` +
     `<span class="model-chip model-chip-${state.model}">${
-      state.model === "href" ? "HREF v3" : state.model === "reps" ? "REPS" : "REFS"}</span>`;
+      state.model === "href" ? "HREF v3" : state.model === "reps" ? "REPS"
+      : state.model === "rrfs_aq" ? "RRFS-AQ" : "REFS"}</span>`;
   updateMemberNav();
 }
 
@@ -1183,6 +1207,31 @@ async function refreshCycleStatus() {
     if (exists) {
       state.availableFhours = new Set(
         Array.from({length: REPS_MAX_FHOUR / 3 + 1}, (_, i) => i * 3));
+      pill.textContent = "Complete"; pill.classList.add("complete");
+    } else {
+      state.availableFhours = new Set();
+      pill.textContent = "unposted"; pill.classList.add("partial");
+    }
+    paintTimeline();
+    return;
+  }
+
+  // RRFS-AQ is also atomic-per-cycle in practice (RRFS posts its hours in
+  // order fairly quickly once a run starts), but unlike REPS its max fhour
+  // varies BY CYCLE (18h off-hour, 84h synoptic) -- read that cycle's own
+  // max_fhour from rrfsaqCycles rather than a fixed constant, and step by
+  // 1h (hourly model) not REPS's 3h.
+  if (state.model === "rrfs_aq") {
+    if (!rrfsaqCycleExists(state.date, state.run)) {
+      try {
+        const fresh = await fetch("/api/rrfsaq-cycles").then(r => r.json());
+        state.rrfsaqCycles = fresh.cycles || [];
+      } catch (_) {}
+    }
+    const cyc = state.rrfsaqCycles.find(c => c.date === state.date && c.run === state.run);
+    if (cyc) {
+      state.availableFhours = new Set(
+        Array.from({length: cyc.max_fhour + 1}, (_, i) => i));
       pill.textContent = "Complete"; pill.classList.add("complete");
     } else {
       state.availableFhours = new Set();
@@ -2405,10 +2454,33 @@ function wireEvents() {
         state.run  = state.repsCycles[0].run;
         paintTopbar();
       }
-    } else if (prev === "reps") {
-      // Switching away from REPS: its tab is now hidden and its pids are
-      // invalid for REFS/HREF, so fall back to the app's own first-visit
-      // default rather than leaving state pointed at an unreachable product.
+    } else if (state.model === "rrfs_aq") {
+      // RRFS-AQ is an independent model (RRFS's own deterministic smoke/
+      // dust/AOD/AQI output) with its own hourly cycle schedule -- same
+      // treatment as REPS above, jump to its own latest cycle and a valid
+      // product rather than whatever REFS/HREF/REPS state was active.
+      state.tab = RRFS_AQ_TAB;
+      if (!state.pid || !state.pid.startsWith("rrfs_")) {
+        state.pid = "rrfs_aqi";
+        state.pidName = nameForPid(state.pid);
+      }
+      if (state.rrfsaqCycles.length === 0) {
+        setStatus("Checking RRFS-AQ cycles…");
+        try {
+          const j = await fetch("/api/rrfsaq-cycles").then(r => r.json());
+          state.rrfsaqCycles = j.cycles || [];
+        } catch (e) { setStatus("RRFS-AQ cycle fetch failed: " + e); }
+      }
+      if (state.rrfsaqCycles.length > 0 && !rrfsaqCycleExists(state.date, state.run)) {
+        state.date = state.rrfsaqCycles[0].date;
+        state.run  = state.rrfsaqCycles[0].run;
+        paintTopbar();
+      }
+    } else if (prev === "reps" || prev === "rrfs_aq") {
+      // Switching away from REPS or RRFS-AQ: their tabs are now hidden and
+      // their pids are invalid for REFS/HREF, so fall back to the app's
+      // own first-visit default rather than leaving state pointed at an
+      // unreachable product.
       state.tab = "Precipitation";
       state.pid = "qpf_3h_pmmn_series";
       state.pidName = nameForPid(state.pid);

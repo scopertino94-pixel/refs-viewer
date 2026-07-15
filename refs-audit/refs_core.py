@@ -708,6 +708,41 @@ def cmap_olr():
     lv = [80,100,120,140,160,180,200,220,240,260,280,300,320]
     return _cmap(cs, lv, 'olr')
 
+# Near-surface smoke (PM2.5, ug/m3). Fine steps at health-relevant EPA
+# breakpoints (~9/35/55/125/225 ug/m3), ending near-black for the most
+# extreme plume-core readings seen during a major wildfire smoke event.
+def cmap_smoke_sfc():
+    cs = ['#fff7bc','#fee391','#fec44f','#fe9929','#ec7014','#cc4c02',
+          '#993404','#662506','#8c2d80','#54278f','#3f007d','#000000']
+    lv = [1,5,12,35,55,100,150,250,500,1000,2000,5000]
+    return _cmap(cs, lv, 'smoke_sfc')
+
+# Column-integrated (vertically-summed) smoke mass, mg/m^2. Cooler start
+# than the surface ramp so the two read as visually distinct products.
+def cmap_smoke_vi():
+    cs = ['#f7fcf5','#c7e9c0','#74c476','#238b45','#fed976','#fd8d3c',
+          '#e31a1c','#bd0026','#7a0177','#49006a','#2d004b','#000000']
+    lv = [0.5,1,2,5,10,25,50,100,250,500,1000,3000]
+    return _cmap(cs, lv, 'smoke_vi')
+
+# Total aerosol optical depth (dimensionless). Clean/hazy blues -> hot
+# colors -> near-black for the extreme plume-core values a model can
+# produce right at a fire source.
+def cmap_aod():
+    cs = ['#f7fbff','#deebf7','#c6dbef','#9ecae1','#6baed6','#fee08b',
+          '#fdae61','#f46d43','#d73027','#a50026','#67001f','#000000']
+    lv = [0.1,0.2,0.3,0.5,0.75,1,1.5,2,3,5,10,20]
+    return _cmap(cs, lv, 'aod')
+
+# Official EPA Air Quality Index color scale + breakpoints (Good/Moderate/
+# Unhealthy for Sensitive Groups/Unhealthy/Very Unhealthy/Hazardous) --
+# genuinely categorical (6 colors, 7 edges), matching cmap_ptype_dominant's
+# convention rather than the graduated sequential ramps above.
+def cmap_aqi_epa():
+    cs = ['#00e400', '#ffff00', '#ff7e00', '#ff0000', '#8f3f97', '#7e0023']
+    lv = [0, 50, 100, 150, 200, 300, 500]
+    return _cmap(cs, lv, 'aqi_epa')
+
 def cmap_wind_sfc():
     # Surface / 10-m wind speed (kt). Scaled for boundary-layer winds — an
     # ensemble mean rarely exceeds ~40-50 kt — not the 30-180 kt jet ramp.
@@ -3690,6 +3725,8 @@ _CMAPS = {
     'sptemp2m': cmap_spread_temp2m, 'spwind10m': cmap_spread_wind10m,
     'ptype_dom': cmap_ptype_dominant, 'frzlvl': cmap_freezing_level,
     'temp_adv': cmap_temp_adv, 'olr': cmap_olr,
+    'smoke_sfc': cmap_smoke_sfc, 'smoke_vi': cmap_smoke_vi,
+    'aod': cmap_aod, 'aqi_epa': cmap_aqi_epa,
 }
 
 # =============================================================================
@@ -3828,6 +3865,10 @@ class PlotJob:
             return self._reps_olr(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'reps_olr_stamps':
             return self._reps_olr_stamps(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'rrfs_aq_field':
+            return self._rrfs_aq_field(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'rrfs_aqi':
+            return self._rrfs_aqi(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4886,6 +4927,74 @@ class PlotJob:
             return None
         members, lat2d, lon2d = result
         return self._reps_stamps_output(prod, members, lat2d, lon2d, region, run_dt, fhr)
+
+    def _rrfs_aq_field(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """RRFS deterministic air-quality field (surface smoke / column
+        smoke / AOD) -- a single byte-range-fetched GRIB2 record, no
+        ensemble math at all (RRFS is deterministic). See
+        app/rrfs_aq_core.py for the loader functions."""
+        import asyncio
+        from app import rrfs_aq_core as aq
+
+        field = prod.get('rrfs_field')
+        loaders = {
+            'smoke_sfc': aq.load_rrfs_smoke_surface,
+            'vi_smoke': aq.load_rrfs_vi_smoke,
+            'aod': aq.load_rrfs_aod,
+        }
+        loader = loaders.get(field)
+        if loader is None:
+            status_cb(f"{prod['name']}: malformed RRFS-AQ product (unknown rrfs_field={field!r})")
+            return None
+
+        status_cb(f"Fetching RRFS {field} F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(loader(cache_dir, date_str, run, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[rrfs_aq_field] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: RRFS-AQ fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[rrfs_aq_field] {prod['name']} F{fhr:03d}: loader returned None",
+                  flush=True)
+            status_cb(f"{prod['name']}: no RRFS-AQ data for F{fhr:03d}")
+            return None
+        data, lats, lons = result
+        if 'convert' in prod:
+            data = prod['convert'](data)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
+
+    def _rrfs_aqi(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """RRFS-derived Air Quality Index: fetch the deterministic hourly-
+        mean TOTAL PM2.5 field and apply the EPA breakpoint formula. See
+        app/rrfs_aq_core.py's load_rrfs_pm25_total_mean / aqi_from_pm25."""
+        import asyncio
+        from app import rrfs_aq_core as aq
+
+        status_cb(f"Fetching RRFS AQI (PM2.5) F{fhr:03d}...")
+        cache_dir = Path(DEFAULT_LOCAL)
+        try:
+            result = asyncio.run(aq.load_rrfs_pm25_total_mean(cache_dir, date_str, run, fhr))
+        except Exception as e:
+            import traceback
+            print(f"[rrfs_aqi] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+                  flush=True)
+            traceback.print_exc()
+            status_cb(f"{prod['name']}: RRFS-AQ fetch/decode failed: {e}")
+            return None
+        if result is None:
+            print(f"[rrfs_aqi] {prod['name']} F{fhr:03d}: loader returned None",
+                  flush=True)
+            status_cb(f"{prod['name']}: no RRFS-AQ data for F{fhr:03d}")
+            return None
+        pm25_kgm3, lats, lons = result
+        pm25_ugm3 = pm25_kgm3 * 1e9
+        aqi = aq.aqi_from_pm25(pm25_ugm3)
+        return self.pm.shaded(aqi, lats, lons, prod, region, run_dt, fhr)
 
     def _reps_freezing_level(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS 0-degC isotherm height, interpolated from ensemble-mean

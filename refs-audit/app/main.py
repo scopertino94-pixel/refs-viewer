@@ -53,6 +53,8 @@ from . import href_data               # noqa: E402
 from . import spc_data                # noqa: E402
 from . import reps_data                # noqa: E402
 from . import reps_products as _reps_products  # noqa: E402
+from . import rrfs_aq_data              # noqa: E402
+from . import rrfs_aq_products as _rrfs_aq_products  # noqa: E402
 from .catalog import (APP_VERSION, PALETTES, THEMES, catalog,    # noqa: E402
                       regions)
 from .grib_range import (ensure_partial_cached,  # noqa: E402
@@ -280,6 +282,50 @@ async def reps_status(date: str, run: int, pid: str):
         "available": fhrs,
         "count": len(fhrs),
         "min_fhr": 0,
+    }
+
+
+@app.get("/api/rrfsaq-cycles")
+async def rrfsaq_cycles():
+    """Recent available RRFS air-quality cycles. RRFS is hourly (unlike
+    REFS's 6-hourly / REPS's 4x-daily cadence) with a run-dependent max
+    forecast hour -- see app/rrfs_aq_data.py."""
+    try:
+        cycles = await rrfs_aq_data.list_recent_cycles()
+    except Exception as e:
+        log.exception("rrfsaq-cycles failed")
+        raise HTTPException(502, f"{type(e).__name__}: {e}")
+    return {"cycles": cycles}
+
+
+@app.get("/api/rrfsaq-status/{date}/{run}/{pid}")
+async def rrfsaq_status(date: str, run: int, pid: str):
+    """Available forecast hours for an RRFS-AQ product in the given cycle.
+
+    Like REPS's status endpoint, this checks whether the cycle exists and
+    returns the full expected fhr list for that run (18h off-hour, 84h at
+    synoptic hours) rather than per-fhr probing -- RRFS posts hours in
+    order fairly quickly once the run starts, so the small risk of showing
+    a not-yet-posted final hour as "available" is an acceptable tradeoff
+    for a much simpler endpoint.
+    """
+    prod = core.PRODUCTS.get(pid)
+    if not prod or prod.get("source") != "rrfs_aq":
+        raise HTTPException(404, "not an RRFS-AQ product")
+    try:
+        cycles = await rrfs_aq_data.list_recent_cycles()
+    except Exception as e:
+        log.exception("rrfsaq-status failed")
+        raise HTTPException(502, f"{type(e).__name__}: {e}")
+    match = next((c for c in cycles if c["date"] == date and c["run"] == run), None)
+    max_fhour = match["max_fhour"] if match else 0
+    min_fhr = int(prod.get("min_fhr", 0))
+    fhrs = list(range(min_fhr, max_fhour + 1, rrfs_aq_data.FHOUR_STEP)) if match else []
+    return {
+        "date": date, "run": run, "pid": pid,
+        "available": fhrs,
+        "count": len(fhrs),
+        "min_fhr": min_fhr,
     }
 
 
