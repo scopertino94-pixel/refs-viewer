@@ -661,7 +661,26 @@ function paintTopbar() {
   // Set date input + run dropdown to current state.
   const d = state.date;
   $("date").value = `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`;
-  $("run").value = String(state.run).padStart(2, "0");
+  const runSel = $("run");
+  const rv = String(state.run).padStart(2, "0");
+  // The Run dropdown only lists REFS/HREF/REPS's fixed cycle hours (00/06/12/
+  // 18 UTC). RRFS-AQ posts a fresh cycle every hour, so following it to an
+  // off-hour run (e.g. 13Z) would otherwise leave the dropdown showing
+  // nothing selected -- inject/refresh a synthetic option for that hour so
+  // it reads correctly, and drop it again once we're back on a standard hour.
+  let dyn = runSel.querySelector("option[data-dynamic]");
+  if (!["00", "06", "12", "18"].includes(rv)) {
+    if (!dyn) {
+      dyn = document.createElement("option");
+      dyn.dataset.dynamic = "1";
+      runSel.appendChild(dyn);
+    }
+    dyn.value = rv;
+    dyn.textContent = `${rv} UTC`;
+  } else if (dyn) {
+    dyn.remove();
+  }
+  runSel.value = rv;
 }
 
 // ----- Tabs ---------------------------------------------------------------
@@ -2996,7 +3015,16 @@ setInterval(async () => {
     // cycle's available hours, then snap the view to the newest posted fhr.
     try {
       let cyc = null;
-      if (state.model === "refs") {
+      if (state.productSource === "rrfs_aq") {
+        // RRFS-AQ posts a fresh cycle every hour (unlike REFS's 6-hourly
+        // cadence), so "follow latest" needs its own cycle list here rather
+        // than REFS's /api/latest, which won't have moved in between.
+        const fresh = await fetch("/api/rrfsaq-cycles").then(r => r.json()).catch(() => null);
+        if (fresh && fresh.cycles && fresh.cycles.length) {
+          state.rrfsaqCycles = fresh.cycles;
+        }
+        cyc = state.rrfsaqCycles[0];
+      } else if (state.model === "refs") {
         cyc = await fetch("/api/latest").then(r => r.json()).catch(() => null);
       } else if (state.hrefCycles.length) {
         cyc = state.hrefCycles[0];
