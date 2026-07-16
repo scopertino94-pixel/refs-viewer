@@ -28,7 +28,7 @@ _job_reps = None           # PlotJob for REPS (recipe='reps_mean' never touches
                            # self.proc -- it does its own async fetch/decode --
                            # so no dedicated DataProcessor is needed, unlike
                            # the other three jobs above).
-_job_rrfs_aq = None        # PlotJob for RRFS air-quality (same shape as REPS --
+_job_rrfs = None           # PlotJob for RRFS operational (same shape as REPS --
                            # recipes do their own async fetch/decode, no processor).
 _core = None               # refs_core module reference
 _init_lock = threading.Lock()
@@ -36,7 +36,7 @@ _init_lock = threading.Lock()
 
 def _ensure_initialized():
     """Import refs_core on the calling thread and build PlotJobs for both models."""
-    global _initialized, _job_refs, _job_href, _job_spc, _job_reps, _job_rrfs_aq, _core
+    global _initialized, _job_refs, _job_href, _job_spc, _job_reps, _job_rrfs, _core
     if _initialized:
         return
     with _init_lock:
@@ -62,12 +62,12 @@ def _ensure_initialized():
         except Exception as e:
             print(f"[render] reps_products registration failed: "
                   f"{type(e).__name__}: {e}", flush=True)
-        # ...and to RRFS air-quality's.
+        # ...and to RRFS's.
         try:
-            from . import rrfs_aq_products as _rrfs_aq_products  # noqa: WPS433
-            _rrfs_aq_products.register()
+            from . import rrfs_products as _rrfs_products  # noqa: WPS433
+            _rrfs_products.register()
         except Exception as e:
-            print(f"[render] rrfs_aq_products registration failed: "
+            print(f"[render] rrfs_products registration failed: "
                   f"{type(e).__name__}: {e}", flush=True)
         _core = core
         _job_refs = core.PlotJob(
@@ -83,7 +83,7 @@ def _ensure_initialized():
             core.PlotManager(),
         )
         _job_reps = core.PlotJob(None, core.PlotManager())
-        _job_rrfs_aq = core.PlotJob(None, core.PlotManager())
+        _job_rrfs = core.PlotJob(None, core.PlotManager())
         _initialized = True
         print(f"[render] refs_core initialized on thread "
               f"{threading.current_thread().name}", flush=True)
@@ -115,13 +115,13 @@ def render(pid: str, date: str, run: int, fhr: int,
     _prod = core.PRODUCTS.get(pid)
     _is_spc = bool(_prod and _prod.get("source") == "spc_post")
     _is_reps = bool(_prod and _prod.get("source") == "reps")
-    _is_rrfs_aq = bool(_prod and _prod.get("source") == "rrfs_aq")
+    _is_rrfs = bool(_prod and _prod.get("source") == "rrfs")
     if _is_spc:
         job = _job_spc
     elif _is_reps:
         job = _job_reps
-    elif _is_rrfs_aq:
-        job = _job_rrfs_aq
+    elif _is_rrfs:
+        job = _job_rrfs
     elif model == "href":
         job = _job_href
     else:
@@ -138,7 +138,7 @@ def render(pid: str, date: str, run: int, fhr: int,
         core.PlotManager.model_label   = (
             "SPC HREF" if _is_spc
             else "REPS" if _is_reps
-            else "RRFS-AQ" if _is_rrfs_aq
+            else "RRFS" if _is_rrfs
             else "HREF v3" if model == "href" else "REFS")
         # Member browser: which single member the stamp recipes should
         # render full-size (-1 = 21-panel grid). Reset in finally so it
@@ -243,31 +243,28 @@ def _probe_lonlat(core, region: str, fx: float, fy: float):
     return float(lonp), float(latp)
 
 
-def _probe_load_field_rrfs_aq(prod, date: str, run: int, fhr: int):
-    """Load one fhr's RRFS-AQ field for point sampling -- same data path as
-    PlotJob._rrfs_aq_field / _rrfs_aqi in refs_core.py, minus the plotting."""
+def _probe_load_field_rrfs(prod, date: str, run: int, fhr: int):
+    """Load one fhr's RRFS field for point sampling -- same data path as
+    PlotJob._rrfs_field / _rrfs_shear in refs_core.py, minus the plotting."""
     import asyncio
-    from app import rrfs_aq_core as aq
+    from app import rrfs_fields as rf
     core = _core
     cache_dir = Path(core.DEFAULT_LOCAL)
     recipe = prod.get("recipe")
     try:
-        if recipe == "rrfs_aqi":
-            result = asyncio.run(aq.load_rrfs_pm25_total_mean(cache_dir, date, run, fhr))
-            if result is None:
+        if recipe == "rrfs_shear":
+            layer = prod.get("rrfs_shear_layer")
+            if not layer:
                 return None, None, None
-            pm25_kgm3, la, lo = result
-            data = aq.aqi_from_pm25(pm25_kgm3 * 1e9)
-            return data, la, lo
-        loaders = {
-            "smoke_sfc": aq.load_rrfs_smoke_surface,
-            "vi_smoke": aq.load_rrfs_vi_smoke,
-            "aod": aq.load_rrfs_aod,
-        }
-        loader = loaders.get(prod.get("rrfs_field"))
-        if loader is None:
-            return None, None, None
-        result = asyncio.run(loader(cache_dir, date, run, fhr))
+            result = asyncio.run(rf.load_rrfs_shear(cache_dir, date, run, fhr, layer))
+        else:
+            tmpl = prod.get("rrfs_idx_tmpl")
+            field_key = prod.get("rrfs_field_key")
+            if not tmpl or not field_key:
+                return None, None, None
+            sub = tmpl.format(fhr=fhr, fhrm1=fhr - 1)
+            family = prod.get("rrfs_family", "2dfld")
+            result = asyncio.run(rf.load_rrfs_generic(cache_dir, date, run, fhr, field_key, sub, family))
         if result is None:
             return None, None, None
         data, la, lo = result
@@ -275,7 +272,7 @@ def _probe_load_field_rrfs_aq(prod, date: str, run: int, fhr: int):
             data = prod["convert"](data)
         return data, la, lo
     except Exception as e:
-        print(f"[probe-rrfs-aq] {prod.get('name')} F{fhr:03d}: "
+        print(f"[probe-rrfs] {prod.get('name')} F{fhr:03d}: "
               f"{type(e).__name__}: {e}", flush=True)
         return None, None, None
 
@@ -424,8 +421,8 @@ def probe_series(pid: str, date: str, run: int, fhrs: list[int],
     prod = core.PRODUCTS.get(pid)
     if prod is None:
         return None
-    _is_rrfs_aq = prod.get("source") == "rrfs_aq"
-    if not _is_rrfs_aq and prod.get("recipe") not in (None, "prob_window"):
+    _is_rrfs = prod.get("source") == "rrfs"
+    if not _is_rrfs and prod.get("recipe") not in (None, "prob_window"):
         return None
     _is_spc = prod.get("source") == "spc_post"
     if _is_spc:
@@ -458,8 +455,8 @@ def probe_series(pid: str, date: str, run: int, fhrs: list[int],
         for fhr in fhrs:
             val = None
             try:
-                if _is_rrfs_aq:
-                    data, la, lo = _probe_load_field_rrfs_aq(prod, date, run, fhr)
+                if _is_rrfs:
+                    data, la, lo = _probe_load_field_rrfs(prod, date, run, fhr)
                 else:
                     data, la, lo = _probe_load_field(job, prod, date, run, fhr)
                 if data is not None:

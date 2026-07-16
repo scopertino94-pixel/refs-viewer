@@ -170,6 +170,7 @@ a:hover { text-decoration: underline; }
 }
 #model-select option[value="href"] { color: #b45309; }
 #model-select option[value="reps"] { color: #dc2626; }
+#model-select option[value="rrfs"] { color: #c2410c; }
 .model-href #model-select { background: #fef3c7; color: #92400e;
   border-color: #f59e0b; }
 /* REPS is a different agency/model entirely (Environment Canada, not
@@ -177,11 +178,13 @@ a:hover { text-decoration: underline; }
    Model selector itself signals "different data source" at a glance. */
 .model-reps #model-select { background: #fee2e2; color: #991b1b;
   border-color: #dc2626; }
+/* RRFS is NOAA's own deterministic model (not an ensemble like REFS/HREF)
+   -- smoky burnt-orange, distinct from REFS blue/HREF amber/REPS red. */
+.model-rrfs #model-select { background: #ffedd5; color: #7c2d12;
+  border-color: #c2410c; }
 
-/* HREF/REPS banner chip shown in the meta strip, plus RRFS-AQ's own
-   second badge (it isn't a model toggle, so it doesn't get a
-   .model-<x> body class or replace the REFS/HREF chip -- see
-   paintMeta()). */
+/* REFS/HREF/REPS/RRFS model chip shown in the meta strip -- see
+   paintMeta(). */
 .model-chip {
   display: inline-block;
   padding: 1px 7px; border-radius: 999px;
@@ -193,7 +196,7 @@ a:hover { text-decoration: underline; }
 .model-chip-reps { background: #7f1d1d; color: #fecaca; }
 /* Smoky burnt-orange, thematically fitting and visually distinct from
    REFS blue/HREF amber/REPS red. */
-.model-chip-rrfs_aq { background: #7c2d12; color: #fed7aa; }
+.model-chip-rrfs { background: #7c2d12; color: #fed7aa; }
 
 /* ── Compare button (lives in the topbar controls-left strip) ───────────── */
 .compare-btn {

@@ -841,11 +841,17 @@ def cmap_ir_satellite():
     lv = [-90, -80, -70, -60, -50, -40, -30, -20, -10, 0, 10, 20, 30, 40]
     return _cmap(cs, lv, 'ir')
 
-# Wildfire potential (NCEP "WFIREPOT", dimensionless 0-1 probability scale).
+# Wildfire potential (RRFS "WFIREPOT" -- NOAA/NCEP's own internal fire-
+# weather index; ecCodes doesn't recognize the parameter so no official
+# units/scale ships with the GRIB message, and no publicly documented
+# breakpoint table was found. Levels below are picked from the field's own
+# live value distribution (CONUS-wide sample: median ~2.5, 99th pct ~21,
+# max ~38 on an ordinary summer day) rather than assumed -- NOT a 0-1
+# probability scale, despite the field's name suggesting one.
 def cmap_wfirepot():
     cs = ['#f3f3e6','#fff0a0','#ffd060','#ff9a30','#ef5a20',
           '#c91f1f','#7a0000','#3a0000']
-    lv = [0.05, 0.10, 0.20, 0.30, 0.45, 0.60, 0.80, 0.95]
+    lv = [1, 2, 4, 7, 12, 20, 30, 45]
     return _cmap(cs, lv, 'wfire')
 
 # Storm motion speed in knots — vector arrows overlaid on top.
@@ -3865,10 +3871,10 @@ class PlotJob:
             return self._reps_olr(prod, date_str, run, fhr, region, run_dt, status_cb)
         if recipe == 'reps_olr_stamps':
             return self._reps_olr_stamps(prod, date_str, run, fhr, region, run_dt, status_cb)
-        if recipe == 'rrfs_aq_field':
-            return self._rrfs_aq_field(prod, date_str, run, fhr, region, run_dt, status_cb)
-        if recipe == 'rrfs_aqi':
-            return self._rrfs_aqi(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'rrfs_field':
+            return self._rrfs_field(prod, date_str, run, fhr, region, run_dt, status_cb)
+        if recipe == 'rrfs_shear':
+            return self._rrfs_shear(prod, date_str, run, fhr, region, run_dt, status_cb)
 
         # ---- Standard shaded product -----------------------------------
         f = self.proc.find_or_fetch(date_str, run, fhr, prod['ftype'], status_cb)
@@ -4928,73 +4934,78 @@ class PlotJob:
         members, lat2d, lon2d = result
         return self._reps_stamps_output(prod, members, lat2d, lon2d, region, run_dt, fhr)
 
-    def _rrfs_aq_field(self, prod, date_str, run, fhr, region, run_dt, status_cb):
-        """RRFS deterministic air-quality field (surface smoke / column
-        smoke / AOD) -- a single byte-range-fetched GRIB2 record, no
-        ensemble math at all (RRFS is deterministic). See
-        app/rrfs_aq_core.py for the loader functions."""
+    def _rrfs_field(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """RRFS deterministic operational field -- a single byte-range-
+        fetched GRIB2 record, no ensemble math at all (RRFS is
+        deterministic). Covers Air Quality, Severe, Storm Attributes, and
+        Fire products alike: the idx substring is built from the product's
+        own `rrfs_idx_tmpl` (with {fhr}/{fhrm1} filled in), so adding a new
+        field is a product-registry entry, not new Python. See
+        app/rrfs_fields.py's load_rrfs_generic."""
         import asyncio
-        from app import rrfs_aq_core as aq
+        from app import rrfs_fields as rf
 
-        field = prod.get('rrfs_field')
-        loaders = {
-            'smoke_sfc': aq.load_rrfs_smoke_surface,
-            'vi_smoke': aq.load_rrfs_vi_smoke,
-            'aod': aq.load_rrfs_aod,
-        }
-        loader = loaders.get(field)
-        if loader is None:
-            status_cb(f"{prod['name']}: malformed RRFS-AQ product (unknown rrfs_field={field!r})")
+        tmpl = prod.get('rrfs_idx_tmpl')
+        field_key = prod.get('rrfs_field_key')
+        if not tmpl or not field_key:
+            status_cb(f"{prod['name']}: malformed RRFS product (missing rrfs_idx_tmpl/rrfs_field_key)")
             return None
+        sub = tmpl.format(fhr=fhr, fhrm1=fhr - 1)
+        family = prod.get('rrfs_family', '2dfld')
 
-        status_cb(f"Fetching RRFS {field} F{fhr:03d}...")
+        status_cb(f"Fetching RRFS {prod['name']} F{fhr:03d}...")
         cache_dir = Path(DEFAULT_LOCAL)
         try:
-            result = asyncio.run(loader(cache_dir, date_str, run, fhr))
+            result = asyncio.run(rf.load_rrfs_generic(cache_dir, date_str, run, fhr, field_key, sub, family))
         except Exception as e:
             import traceback
-            print(f"[rrfs_aq_field] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+            print(f"[rrfs_field] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
                   flush=True)
             traceback.print_exc()
-            status_cb(f"{prod['name']}: RRFS-AQ fetch/decode failed: {e}")
+            status_cb(f"{prod['name']}: RRFS fetch/decode failed: {e}")
             return None
         if result is None:
-            print(f"[rrfs_aq_field] {prod['name']} F{fhr:03d}: loader returned None",
+            print(f"[rrfs_field] {prod['name']} F{fhr:03d}: loader returned None",
                   flush=True)
-            status_cb(f"{prod['name']}: no RRFS-AQ data for F{fhr:03d}")
+            status_cb(f"{prod['name']}: no RRFS data for F{fhr:03d}")
             return None
         data, lats, lons = result
         if 'convert' in prod:
             data = prod['convert'](data)
         return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
 
-    def _rrfs_aqi(self, prod, date_str, run, fhr, region, run_dt, status_cb):
-        """RRFS-derived Air Quality Index: fetch the deterministic hourly-
-        mean TOTAL PM2.5 field and apply the EPA breakpoint formula. See
-        app/rrfs_aq_core.py's load_rrfs_pm25_total_mean / aqi_from_pm25."""
+    def _rrfs_shear(self, prod, date_str, run, fhr, region, run_dt, status_cb):
+        """RRFS bulk shear magnitude for an AGL layer -- fetches the U/V
+        shear components (VUCSH/VVCSH) as 2 separate records and combines
+        sqrt(u**2 + v**2). See app/rrfs_fields.py's load_rrfs_shear."""
         import asyncio
-        from app import rrfs_aq_core as aq
+        from app import rrfs_fields as rf
 
-        status_cb(f"Fetching RRFS AQI (PM2.5) F{fhr:03d}...")
+        layer = prod.get('rrfs_shear_layer')
+        if not layer:
+            status_cb(f"{prod['name']}: malformed RRFS shear product (missing rrfs_shear_layer)")
+            return None
+
+        status_cb(f"Fetching RRFS {prod['name']} F{fhr:03d}...")
         cache_dir = Path(DEFAULT_LOCAL)
         try:
-            result = asyncio.run(aq.load_rrfs_pm25_total_mean(cache_dir, date_str, run, fhr))
+            result = asyncio.run(rf.load_rrfs_shear(cache_dir, date_str, run, fhr, layer))
         except Exception as e:
             import traceback
-            print(f"[rrfs_aqi] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
+            print(f"[rrfs_shear] {prod['name']} F{fhr:03d}: {type(e).__name__}: {e}",
                   flush=True)
             traceback.print_exc()
-            status_cb(f"{prod['name']}: RRFS-AQ fetch/decode failed: {e}")
+            status_cb(f"{prod['name']}: RRFS fetch/decode failed: {e}")
             return None
         if result is None:
-            print(f"[rrfs_aqi] {prod['name']} F{fhr:03d}: loader returned None",
+            print(f"[rrfs_shear] {prod['name']} F{fhr:03d}: loader returned None",
                   flush=True)
-            status_cb(f"{prod['name']}: no RRFS-AQ data for F{fhr:03d}")
+            status_cb(f"{prod['name']}: no RRFS data for F{fhr:03d}")
             return None
-        pm25_kgm3, lats, lons = result
-        pm25_ugm3 = pm25_kgm3 * 1e9
-        aqi = aq.aqi_from_pm25(pm25_ugm3)
-        return self.pm.shaded(aqi, lats, lons, prod, region, run_dt, fhr)
+        data, lats, lons = result
+        if 'convert' in prod:
+            data = prod['convert'](data)
+        return self.pm.shaded(data, lats, lons, prod, region, run_dt, fhr)
 
     def _reps_freezing_level(self, prod, date_str, run, fhr, region, run_dt, status_cb):
         """REPS 0-degC isotherm height, interpolated from ensemble-mean

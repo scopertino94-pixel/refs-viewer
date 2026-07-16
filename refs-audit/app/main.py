@@ -53,8 +53,8 @@ from . import href_data               # noqa: E402
 from . import spc_data                # noqa: E402
 from . import reps_data                # noqa: E402
 from . import reps_products as _reps_products  # noqa: E402
-from . import rrfs_aq_data              # noqa: E402
-from . import rrfs_aq_products as _rrfs_aq_products  # noqa: E402
+from . import rrfs_data              # noqa: E402
+from . import rrfs_products as _rrfs_products  # noqa: E402
 from .catalog import (APP_VERSION, PALETTES, THEMES, catalog,    # noqa: E402
                       regions)
 from .grib_range import (ensure_partial_cached,  # noqa: E402
@@ -285,48 +285,19 @@ async def reps_status(date: str, run: int, pid: str):
     }
 
 
-@app.get("/api/rrfsaq-cycles")
-async def rrfsaq_cycles():
-    """Recent available RRFS air-quality cycles. RRFS is hourly (unlike
-    REFS's 6-hourly / REPS's 4x-daily cadence) with a run-dependent max
-    forecast hour -- see app/rrfs_aq_data.py."""
+@app.get("/api/rrfs-cycles")
+async def rrfs_cycles():
+    """Recent available RRFS cycles. RRFS is hourly (unlike REFS's
+    6-hourly / REPS's 4x-daily cadence) with a run-dependent max forecast
+    hour -- see app/rrfs_data.py. The frontend uses this the same way it
+    uses /api/reps-cycles: a coarse "cycle exists -> assume the full
+    theoretical fhr range is posted" check, not per-product probing."""
     try:
-        cycles = await rrfs_aq_data.list_recent_cycles()
+        cycles = await rrfs_data.list_recent_cycles()
     except Exception as e:
-        log.exception("rrfsaq-cycles failed")
+        log.exception("rrfs-cycles failed")
         raise HTTPException(502, f"{type(e).__name__}: {e}")
     return {"cycles": cycles}
-
-
-@app.get("/api/rrfsaq-status/{date}/{run}/{pid}")
-async def rrfsaq_status(date: str, run: int, pid: str):
-    """Available forecast hours for an RRFS-AQ product in the given cycle.
-
-    Like REPS's status endpoint, this checks whether the cycle exists and
-    returns the full expected fhr list for that run (18h off-hour, 84h at
-    synoptic hours) rather than per-fhr probing -- RRFS posts hours in
-    order fairly quickly once the run starts, so the small risk of showing
-    a not-yet-posted final hour as "available" is an acceptable tradeoff
-    for a much simpler endpoint.
-    """
-    prod = core.PRODUCTS.get(pid)
-    if not prod or prod.get("source") != "rrfs_aq":
-        raise HTTPException(404, "not an RRFS-AQ product")
-    try:
-        cycles = await rrfs_aq_data.list_recent_cycles()
-    except Exception as e:
-        log.exception("rrfsaq-status failed")
-        raise HTTPException(502, f"{type(e).__name__}: {e}")
-    match = next((c for c in cycles if c["date"] == date and c["run"] == run), None)
-    max_fhour = match["max_fhour"] if match else 0
-    min_fhr = int(prod.get("min_fhr", 0))
-    fhrs = list(range(min_fhr, max_fhour + 1, rrfs_aq_data.FHOUR_STEP)) if match else []
-    return {
-        "date": date, "run": run, "pid": pid,
-        "available": fhrs,
-        "count": len(fhrs),
-        "min_fhr": min_fhr,
-    }
 
 
 # Render pool. With RENDER_WORKERS>1 we use a spawn-based ProcessPoolExecutor
@@ -1233,12 +1204,12 @@ async def meteogram_endpoint(date: str, run: int, pid: str,
     if pid not in core.PRODUCTS:
         raise HTTPException(404, f"Unknown product: {pid}")
     prod = core.PRODUCTS[pid]
-    _is_rrfs_aq = prod.get("source") == "rrfs_aq"
-    if not _is_rrfs_aq and prod.get("recipe") not in (None, "prob_window"):
+    _is_rrfs = prod.get("source") == "rrfs"
+    if not _is_rrfs and prod.get("recipe") not in (None, "prob_window"):
         return {"ok": True, "series": None,
                 "reason": "not supported for member/multi-field products"}
-    if _is_rrfs_aq:
-        max_fhr = rrfs_aq_data.max_fhour_for_run(run)
+    if _is_rrfs:
+        max_fhr = rrfs_data.max_fhour_for_run(run)
     else:
         max_fhr = href_data.MAX_FHOUR if model == "href" else refs_data.MAX_FHOUR
     stride = max(1, int(prod.get("fhr_stride", 1)))

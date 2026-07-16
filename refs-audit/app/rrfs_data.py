@@ -1,17 +1,21 @@
-"""RRFS air-quality metadata helpers: cycle discovery, fhour availability.
+"""RRFS operational metadata helpers: cycle discovery, fhour availability.
 
-RRFS (the deterministic model REFS's ensemble is built from) publishes its
-own smoke/dust/AOD fields -- REFS/HREF's ensemble-post files do NOT carry
-them (confirmed by direct .idx inspection: REFS's mean/prob/pmmn/lpmm/sprd
-files have no MASSDEN/COLMD/AOTK records at all, only VIS). So air quality
-needs RRFS's raw deterministic output as its own data source, same as REPS
-is its own source -- not folded into the REFS/HREF model toggle.
+RRFS is the deterministic model REFS's ensemble is built from, and is
+treated as its own full model in this app (Model dropdown value "rrfs") --
+it publishes a much broader field set than REFS/HREF's own ensemble-post
+files carry (confirmed by direct .idx inspection: REFS's mean/prob/pmmn/
+lpmm/sprd files have no MASSDEN/COLMD/AOTK/REFC/CAPE-layer/etc. records
+in the shapes RRFS has -- only the REFS-computed equivalents), so it needs
+its own data source/cycle schedule, same as REPS.
 
 RRFS runs HOURLY (00-23z), unlike REFS's 6-hourly cadence, with a run-
 dependent max forecast hour: 84h at the four synoptic hours (00/06/12/18z),
 18h at every other hour (confirmed empirically against the live S3 bucket).
 
-Files live at (same S3 bucket as REFS, different prefix):
+Files live at (same S3 bucket as REFS, different prefix). Several file
+families exist per cycle -- this app currently only reads "2dfld" (see
+app/rrfs_grib.py's FAMILY_FNAME map for the full set including "prslev",
+the pressure-level file used by a future Synoptic-tab addition):
   https://noaa-rrfs-pds.s3.amazonaws.com/rrfs_a/rrfs.{date}/{run:02d}/
      rrfs.t{run:02d}z.2dfld.3km.f{fhr:03d}.conus.grib2[.idx]
 
@@ -35,6 +39,16 @@ import httpx
 S3_BASE = "https://noaa-rrfs-pds.s3.amazonaws.com"
 S3_PREFIX = "rrfs_a/rrfs.{date}/{run:02d}"
 FNAME_T = "rrfs.t{run:02d}z.2dfld.3km.f{fhr:03d}.conus.grib2"
+
+# Filename templates by file "family" -- rrfs_grib.py's record fetcher takes
+# a family name and looks up the right template here. Only "2dfld" (surface/
+# diagnostic fields: reflectivity, CAPE, UH, smoke, wildfire potential, etc.)
+# is used today; "prslev" (full isobaric HGT/TMP/RH/UGRD/VGRD at ~40 standard
+# pressure levels) is wired for a future Synoptic-tab addition.
+FAMILY_FNAME = {
+    "2dfld": FNAME_T,
+    "prslev": "rrfs.t{run:02d}z.prslev.3km.f{fhr:03d}.conus.grib2",
+}
 
 SYNOPTIC_RUNS = (0, 6, 12, 18)
 MAX_FHOUR_SYNOPTIC = 84

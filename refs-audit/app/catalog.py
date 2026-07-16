@@ -18,15 +18,12 @@ _extras.register()
 from . import reps_products as _reps      # noqa: E402
 _reps.register()
 
-# Register RRFS air-quality (smoke/dust/AOD/AQI) -- RRFS's own deterministic
-# output; REFS/HREF's own ensemble-post files carry no smoke/dust fields
-# at all. UNLIKE REPS, this is NOT a separate model toggle -- its product
-# ids don't collide with anything REFS/HREF already has, so it's just an
-# ordinary always-visible "Air Quality" tab inside the REFS/HREF catalog
-# (frontend gates it by product source, same as SPC Guidance, not by a
-# model value).
-from . import rrfs_aq_products as _rrfs_aq   # noqa: E402
-_rrfs_aq.register()
+# Register RRFS -- a genuinely independent operational model (own cycle
+# schedule, own deterministic output: Air Quality, Severe, Storm
+# Attributes, Fire), given its own Model dropdown entry and top-level tabs,
+# same "own model" pattern as REPS above (not folded into REFS/HREF).
+from . import rrfs_products as _rrfs      # noqa: E402
+_rrfs.register()
 
 
 # Map refs_core category strings → SPC-HREF top-tab buckets.
@@ -41,6 +38,9 @@ TAB_ORDER = [
     "Member Viewer",
     "Ensemble Spread",
     "REPS",
+    "RRFS Severe",
+    "RRFS Storm Attributes",
+    "RRFS Fire",
     "Air Quality",
 ]
 
@@ -82,6 +82,9 @@ CATEGORY_TO_TAB = {
     "REPS Synoptic":               "REPS",
     "REPS Members":                "REPS",
     "REPS Convection":             "REPS",
+    "RRFS Severe":                 "RRFS Severe",
+    "RRFS Storm Attributes":       "RRFS Storm Attributes",
+    "RRFS Fire":                   "RRFS Fire",
     "Air Quality":                 "Air Quality",
 }
 
